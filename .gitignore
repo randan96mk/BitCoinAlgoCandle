@@ -9,3 +9,9 @@ logs/*.log
 venv/
 node_modules/
 .DS_Store
+
+database/
+logs/
+config/user.json
+*.db
+__pycache__/
