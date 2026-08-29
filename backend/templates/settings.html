@@ -105,6 +105,20 @@
                         <option value="none">None</option>
                     </select>
                 </div>
+                <div>
+                    <label class="block text-muted mb-1">Entry Bias</label>
+                    <select id="strategy.entry_bias" class="w-full bg-card border border-border rounded px-2.5 py-2">
+                        <option value="pullback">Pullback (buy dips in trend)</option>
+                        <option value="breakout">Breakout (range break)</option>
+                        <option value="any">Any location</option>
+                    </select>
+                    <span class="text-[10px] text-muted">Where a setup may occur</span>
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">Max Entry Extension (× ATR)</label>
+                    <input type="number" step="0.1" min="0" id="strategy.max_entry_ext_atr" class="w-full bg-card border border-border rounded px-2.5 py-2" value="1.5">
+                    <span class="text-[10px] text-muted">Anti-chase; 0 = off</span>
+                </div>
                 <div><label class="block text-muted mb-1">Confirmation Window (bars)</label><input type="number" min="1" id="strategy.confirmation_window" class="w-full bg-card border border-border rounded px-2.5 py-2" value="3"></div>
                 <div><label class="block text-muted mb-1">Cooldown Bars</label><input type="number" min="0" id="strategy.cooldown_bars" class="w-full bg-card border border-border rounded px-2.5 py-2" value="5"></div>
                 <div><label class="block text-muted mb-1">TP1 (R)</label><input type="number" step="0.1" id="strategy.tp1_r" class="w-full bg-card border border-border rounded px-2.5 py-2" value="1.0"></div>

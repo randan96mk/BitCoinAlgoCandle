@@ -80,6 +80,10 @@ action → confirmations → weighted score → breakout confirmation within
   edge). They still detect and ride along as secondary context.
 * `max_entry_ext_atr` — reject entries already stretched more than N ATRs beyond
   the slow EMA (anti-chasing; default 1.5, 0 disables).
+* `entry_bias` — where a setup may occur: `pullback` (default; buy dips in an
+  uptrend / sell rallies in a downtrend — the pattern must return to value at
+  support/resistance or the fast EMA within `pullback_ema_atr` ATRs, with trend
+  alignment), `breakout` (require a range break), or `any` (off).
 * **Gated reversal exits** — an open position is only flipped by a fresh signal
   that is a genuine reversal-class pattern (engulfing/star/pin/hammer/…) with
   score ≥ `reversal_min_score`; a plain opposite Marubozu can no longer whipsaw

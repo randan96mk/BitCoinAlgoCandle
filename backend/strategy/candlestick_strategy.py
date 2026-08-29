@@ -112,6 +112,12 @@ class CandlestickStrategy:
         # EMA — i.e. don't chase an extended move into likely mean reversion.
         # 0 disables the filter.
         self.max_entry_ext_atr = cfg.get("strategy.max_entry_ext_atr", 1.5)
+        # Where a setup must occur: "any" | "pullback" (buy dips in trend) |
+        # "breakout" (require breakout of the recent range).
+        self.entry_bias = cfg.get("strategy.entry_bias", "pullback")
+        # How close the pattern must have pulled back to the fast EMA to count as
+        # a dip (in ATRs). Larger = looser.
+        self.pullback_ema_atr = cfg.get("strategy.pullback_ema_atr", 0.75)
 
     # ── public API ────────────────────────────────────────────────────────────
     def evaluate(self, df: pd.DataFrame, htf_df: Optional[pd.DataFrame] = None) -> SignalResult:
@@ -190,6 +196,15 @@ class CandlestickStrategy:
                                        ema_slow_s, sma_trend_s, vol, vol_sma_s, close)
         pa_ctx = pa.analyze(candles, t, self.pa_cfg, cur_atr,
                             primary.pattern_low, primary.pattern_high, direction)
+
+        # Entry-bias filter — prefer "buy the dip in an uptrend" (pattern pulled
+        # back to value at support / the fast EMA) over chasing a breakout into
+        # open air. Mirrored for shorts. Configurable via strategy.entry_bias.
+        if not self._entry_bias_ok(direction, primary, pa_ctx, cur_atr,
+                                   _safe(ema_fast_s.iloc[t], 0.0),
+                                   _safe(ema_slow_s.iloc[t], 0.0)):
+            return base
+
         pa_score = pa_ctx.score_long if direction == "long" else pa_ctx.score_short
 
         score, breakdown = score_setup(
@@ -346,6 +361,31 @@ class CandlestickStrategy:
         c = _safe(hc.iloc[i], 0.0)
         m = _safe(hma.iloc[i], 0.0)
         return c > m, c < m
+
+    def _entry_bias_ok(self, direction, primary, pa_ctx, atr, ema_fast, ema_slow):
+        """Location filter: 'pullback' = dip-in-trend, 'breakout' = range break."""
+        if self.entry_bias == "any":
+            return True
+        if self.entry_bias == "breakout":
+            return pa_ctx.breakout_up if direction == "long" else pa_ctx.breakout_down
+
+        # pullback: trend must align, and the pattern must have returned to value
+        # (at support/resistance or back to the fast EMA), not sit extended.
+        band = self.pullback_ema_atr * atr if atr > 0 else 0
+        has_ema = ema_fast > 0 and ema_slow > 0
+        if direction == "long":
+            trend_ok = (ema_fast > ema_slow) if has_ema else True
+            dip_ok = pa_ctx.at_support or (ema_fast > 0 and primary.pattern_low <= ema_fast + band)
+            ok = trend_ok and dip_ok
+            if ok and not pa_ctx.at_support and pa_ctx.label == "none":
+                pa_ctx.label = "ema_pullback"
+            return ok
+        trend_ok = (ema_fast < ema_slow) if has_ema else True
+        dip_ok = pa_ctx.at_resistance or (ema_fast > 0 and primary.pattern_high >= ema_fast - band)
+        ok = trend_ok and dip_ok
+        if ok and not pa_ctx.at_resistance and pa_ctx.label == "none":
+            pa_ctx.label = "ema_pullback"
+        return ok
 
     def _context_result(self, candles, t, rsi_s, adx_s, atr_s,
                         ema_fast_s, ema_slow_s, sma_trend_s, df) -> SignalResult:

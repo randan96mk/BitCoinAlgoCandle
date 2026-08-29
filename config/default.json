@@ -16,6 +16,8 @@
     "exit_poll_seconds": 5,
     "excluded_trigger_patterns": ["Marubozu", "Doji", "Inside Bar"],
     "max_entry_ext_atr": 1.5,
+    "entry_bias": "pullback",
+    "pullback_ema_atr": 0.75,
 
     "candle": {
       "doji_body_ratio": 0.1,
