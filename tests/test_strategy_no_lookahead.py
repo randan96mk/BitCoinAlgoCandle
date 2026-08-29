@@ -34,9 +34,21 @@ def _make_df():
     return pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
 
 
+def _mechanics_strategy():
+    """Strategy with the discretionary quality filters relaxed, so these tests
+    exercise pattern detection + entry mechanics rather than the tuned filters."""
+    s = CandlestickStrategy()
+    s.excluded_triggers = set()      # allow any pattern to trigger
+    s.max_entry_ext_atr = 0          # disable anti-chase filter
+    s.min_score = 0                  # don't gate on score here
+    for k in s._enabled:
+        s._enabled[k] = False        # ignore indicator confirmations
+    return s
+
+
 def test_long_setup_names_pattern():
     df = _make_df().iloc[:118]  # forming bar = 117, last closed = 116 (breakout bar)
-    r = CandlestickStrategy().evaluate(df)
+    r = _mechanics_strategy().evaluate(df)
     assert r.signal_type == "long", r.signal_type
     assert r.primary_pattern, "signal must name a candlestick pattern"
     assert r.entry_price > 0 and r.stop_loss < r.entry_price < r.tp1 < r.tp3
@@ -65,7 +77,7 @@ def test_no_lookahead_replay_matches():
 def test_signal_only_on_closed_bars():
     """The forming bar (index -1) must never be the pattern/confirmation bar."""
     df = _make_df().iloc[:118]
-    r = CandlestickStrategy().evaluate(df)
+    r = _mechanics_strategy().evaluate(df)
     if r.signal_type and r.timestamp is not None:
         # The signal's timestamp is the last CLOSED bar, not the forming one.
         assert r.timestamp <= df["timestamp"].iloc[-2]

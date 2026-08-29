@@ -9,11 +9,13 @@
     "timeframe": "1m",
     "htf_timeframe": "15m",
 
-    "min_signal_score": 70,
+    "min_signal_score": 72,
     "confirmation_mode": "breakout",
     "confirmation_window": 3,
-    "cooldown_bars": 5,
+    "cooldown_bars": 8,
     "exit_poll_seconds": 5,
+    "excluded_trigger_patterns": ["Marubozu", "Doji", "Inside Bar"],
+    "max_entry_ext_atr": 1.5,
 
     "candle": {
       "doji_body_ratio": 0.1,
@@ -38,7 +40,7 @@
     "confirmations": {
       "enable_ema": true,
       "enable_rsi": true,
-      "enable_adx": false,
+      "enable_adx": true,
       "enable_htf": true,
       "enable_cardwell": true,
       "enable_volume": true,
@@ -76,9 +78,9 @@
     "tp2_r": 2.0,
     "tp3_r": 3.0,
     "exit_on_reversal": true,
-    "reversal_min_score": 65,
+    "reversal_min_score": 72,
     "use_breakeven": true,
-    "breakeven_trigger_r": 1.0,
+    "breakeven_trigger_r": 0.75,
     "use_trailing": false,
     "trailing_atr_mult": 1.5,
     "max_trade_minutes": 0

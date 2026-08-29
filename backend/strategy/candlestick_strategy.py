@@ -103,6 +103,16 @@ class CandlestickStrategy:
             "volume": self.conf.get("enable_volume", True),
         }
 
+        # Patterns too weak/noisy to trigger a trade on their own (still detected
+        # and stored as secondary context). Marubozu/Doji/Inside Bar fire far too
+        # often on 1m to carry an edge alone.
+        self.excluded_triggers = set(cfg.get(
+            "strategy.excluded_trigger_patterns", ["Marubozu", "Doji", "Inside Bar"]))
+        # Skip entries that are already stretched this many ATRs beyond the slow
+        # EMA — i.e. don't chase an extended move into likely mean reversion.
+        # 0 disables the filter.
+        self.max_entry_ext_atr = cfg.get("strategy.max_entry_ext_atr", 1.5)
+
     # ── public API ────────────────────────────────────────────────────────────
     def evaluate(self, df: pd.DataFrame, htf_df: Optional[pd.DataFrame] = None) -> SignalResult:
         """Evaluate the strategy; returns the signal for the confirming bar (or empty)."""
@@ -164,6 +174,16 @@ class CandlestickStrategy:
 
         if risk <= 0:
             return base
+
+        # Anti-chase filter: reject entries already stretched too far beyond the
+        # slow EMA (buying tops / selling bottoms is the main source of the quick
+        # reversal losses on 1m).
+        if self.max_entry_ext_atr and cur_atr > 0:
+            es = _safe(ema_slow_s.iloc[t], 0.0)
+            if es > 0:
+                ext = (entry - es) if direction == "long" else (es - entry)
+                if ext > self.max_entry_ext_atr * cur_atr:
+                    return base
 
         # Confirmations (indicators)
         confirms = self._confirmations(direction, t, rsi_s, adx_s, ema_fast_s,
@@ -250,8 +270,14 @@ class CandlestickStrategy:
             if not directional:
                 continue
             directional.sort(key=lambda m: m.strength * 0.6 + m.quality * 0.4, reverse=True)
-            primary = directional[0]
-            secondaries = [m for m in directional[1:] if m.direction == primary.direction]
+            # Primary must be a pattern allowed to trigger; excluded ones (e.g.
+            # Marubozu) can still ride along as secondary context.
+            allowed = [m for m in directional if m.name not in self.excluded_triggers]
+            if not allowed:
+                continue
+            primary = allowed[0]
+            secondaries = [m for m in directional if m is not primary
+                           and m.direction == primary.direction]
 
             # HTF hard filter
             if primary.direction == "long" and not htf_bull_ok:

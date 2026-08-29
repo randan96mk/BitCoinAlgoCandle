@@ -74,6 +74,20 @@ action → confirmations → weighted score → breakout confirmation within
 `confirmation_window` → one LONG/SHORT signal. One signal per setup
 (`setup_id = pattern|direction|pattern_bar_time`) + `cooldown_bars`.
 
+### Quality filters (raise win probability, reduce overtrading)
+* `excluded_trigger_patterns` — patterns that may not trigger a trade on their
+  own (default Marubozu / Doji / Inside Bar: too frequent on 1m to carry an
+  edge). They still detect and ride along as secondary context.
+* `max_entry_ext_atr` — reject entries already stretched more than N ATRs beyond
+  the slow EMA (anti-chasing; default 1.5, 0 disables).
+* **Gated reversal exits** — an open position is only flipped by a fresh signal
+  that is a genuine reversal-class pattern (engulfing/star/pin/hammer/…) with
+  score ≥ `reversal_min_score`; a plain opposite Marubozu can no longer whipsaw
+  a trade out.
+* `enable_adx` on by default (trend-strength filter), `breakeven_trigger_r` 0.75
+  (protect winners sooner). Use the **Pattern Performance** analytics to see
+  which patterns/combos actually win on BTC futures, then prune the losers.
+
 ### Exits
 SL / TP1 / TP2 / TP3, break-even after `breakeven_trigger_r`, optional ATR
 trailing, opposite-pattern reversal, optional max trade duration.
