@@ -57,6 +57,33 @@ class TelegramNotifier:
             logger.error(f"Telegram send failed: {e}")
             return False
 
+    async def send_test(self) -> dict:
+        """Send a test message using the saved credentials, ignoring the enabled
+        flag, and return a clear {ok, detail} so credential errors are visible.
+        """
+        if not self.bot_token or not self.chat_id:
+            return {"ok": False, "detail": "Bot token and chat ID are both required."}
+        text = ("✅ <b>BTC Futures Candlestick</b>\n"
+                "Telegram is connected — you will receive signal alerts here.")
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{self.base_url}/sendMessage",
+                    json={"chat_id": self.chat_id, "text": text, "parse_mode": "HTML"},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    return {"ok": True, "detail": "Test message sent — check Telegram."}
+                # Surface Telegram's own description (bad token, chat not found, …)
+                detail = resp.text
+                try:
+                    detail = resp.json().get("description", detail)
+                except Exception:
+                    pass
+                return {"ok": False, "detail": f"Telegram {resp.status_code}: {detail}"}
+        except Exception as e:
+            return {"ok": False, "detail": f"Request failed: {type(e).__name__}: {e}"}
+
     def format_entry_signal(self, direction: str, symbol: str, timeframe: str,
                             entry: float, sl: float, tp1: float, tp2: float,
                             tp3: float, score: float, regime: str,

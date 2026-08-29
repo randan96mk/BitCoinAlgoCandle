@@ -21,7 +21,12 @@
                     <input type="checkbox" id="telegram.enabled" class="rounded bg-card border-border">
                     <label class="text-muted">Enable Telegram Alerts</label>
                 </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="tg-test-btn" class="px-3 py-1.5 bg-card border border-border rounded hover:bg-surface transition">Send test message</button>
+                    <span id="tg-test-status" class="text-muted"></span>
+                </div>
             </div>
+            <p class="text-[10px] text-muted mt-2">Save first, then send a test. If it fails, the exact Telegram error is shown — the most common cause is that you haven't pressed <b>Start</b> in a DM with your bot (a bot can't message you until you do), or the chat ID is wrong.</p>
         </div>
 
         <div class="bg-surface rounded-lg p-4 border border-border">
@@ -183,6 +188,28 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     s.className = 'text-xs ' + (result.needs_reload && !result.reloaded ? 'text-loss' : 'text-profit');
     setTimeout(() => s.classList.add('hidden'), 4000);
 };
+document.getElementById('tg-test-btn').onclick = async () => {
+    const st = document.getElementById('tg-test-status');
+    st.className = 'text-muted';
+    st.textContent = 'Saving & sending…';
+    // Persist current Telegram fields first so the server tests what you typed.
+    const data = {
+        'telegram.bot_token': document.getElementById('telegram.bot_token').value.trim(),
+        'telegram.chat_id': document.getElementById('telegram.chat_id').value.trim(),
+        'telegram.enabled': document.getElementById('telegram.enabled').checked,
+    };
+    try {
+        await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+        const resp = await fetch('/api/telegram/test', {method:'POST'});
+        const r = await resp.json();
+        st.className = 'text-xs ' + (r.ok ? 'text-profit' : 'text-loss');
+        st.textContent = r.detail || (r.ok ? 'Sent' : 'Failed');
+    } catch (e) {
+        st.className = 'text-xs text-loss';
+        st.textContent = 'Request failed: ' + e;
+    }
+};
+
 loadConfig();
 </script>
 {% endblock %}

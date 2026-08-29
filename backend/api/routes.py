@@ -227,21 +227,39 @@ async def get_config():
 @router.post("/config")
 async def update_config(data: dict):
     from backend.main import engine_instance
+    from backend.telegram.notifier import TelegramNotifier
     cfg = Config()
     needs_reload = False
+    telegram_changed = False
     for key, val in data.items():
         old = cfg.get(key)
         cfg.set(key, val)
         if old != val and (key.startswith("exchange.") or key.startswith("strategy.")):
             needs_reload = True
+        if old != val and key.startswith("telegram."):
+            telegram_changed = True
+
     reloaded = False
     if needs_reload and engine_instance:
         try:
-            reloaded = await engine_instance.reload()
+            reloaded = await engine_instance.reload()  # rebuilds notifier too
         except Exception as e:
             import logging
             logging.getLogger("app").error(f"Engine reload failed: {e}")
+    # Telegram credentials change alone: rebuild just the notifier live so alerts
+    # start firing without a restart (a full reload isn't needed).
+    if telegram_changed and not reloaded and engine_instance:
+        engine_instance.notifier = TelegramNotifier(cfg)
+
     return {"status": "ok", "reloaded": reloaded, "needs_reload": needs_reload}
+
+
+@router.post("/telegram/test")
+async def telegram_test():
+    """Send a test message with the currently-saved Telegram credentials and
+    return a clear result so mis-set token / chat-id can be diagnosed."""
+    from backend.telegram.notifier import TelegramNotifier
+    return await TelegramNotifier(Config()).send_test()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
