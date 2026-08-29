@@ -13,6 +13,7 @@
     "confirmation_mode": "breakout",
     "confirmation_window": 3,
     "cooldown_bars": 5,
+    "exit_poll_seconds": 5,
 
     "candle": {
       "doji_body_ratio": 0.1,

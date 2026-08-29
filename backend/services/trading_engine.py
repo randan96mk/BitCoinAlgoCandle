@@ -57,6 +57,10 @@ class TradingEngine:
         self._current_price: float = 0.0
         self._current_atr: float = 0.0
         self._status = "stopped"
+        # Serialises exit checks so the signal loop and the fast exit-monitor
+        # loop can never both close the same position.
+        self._exit_lock = asyncio.Lock()
+        self._monitor_task: Optional[asyncio.Task] = None
 
     @property
     def status(self) -> str:
@@ -80,6 +84,11 @@ class TradingEngine:
         self._status = "running"
         logger.info(f"Trading engine started on {self.feed.exchange_name}")
 
+        # Fast exit monitor runs independently of the bar-close signal loop so
+        # stop-loss / take-profit are checked in near-real-time, not once a bar.
+        if self._monitor_task is None or self._monitor_task.done():
+            self._monitor_task = asyncio.create_task(self._exit_monitor_loop())
+
         while self._running:
             try:
                 await self._tick()
@@ -102,6 +111,26 @@ class TradingEngine:
             interval = TIMEFRAME_SECONDS.get(tf, 60)
             now = _time.time()
             await asyncio.sleep(interval - (now % interval) + 3)
+
+    async def _exit_monitor_loop(self):
+        """Poll the live price frequently and check SL/TP on open positions.
+
+        This closes the gap where a stop could sit un-triggered for up to a full
+        bar: the signal loop only checks exits once per candle close, whereas
+        real stops must react to price the moment it is touched.
+        """
+        while self._running:
+            poll = max(1, int(self.config.get("strategy.exit_poll_seconds", 5)))
+            await asyncio.sleep(poll)
+            if not self._running or not self.feed.is_connected:
+                continue
+            try:
+                price = await self.feed.get_current_price()
+                if price and price > 0:
+                    self._current_price = float(price)
+                    await self._check_exits()
+            except Exception as e:
+                logger.debug(f"Exit monitor skipped a poll: {type(e).__name__}: {e}")
 
     async def reload(self):
         logger.info("Reloading engine configuration...")
@@ -242,28 +271,31 @@ class TradingEngine:
         logger.info(f"Exit: {sig.direction} {exit_reason} PnL={sig.pnl:.2f}")
 
     async def _check_exits(self):
-        price = self._current_price
-        use_be = self.config.get("strategy.use_breakeven", True)
-        be_r = self.config.get("strategy.breakeven_trigger_r", 1.0)
-        use_trail = self.config.get("strategy.use_trailing", False)
-        trail_mult = self.config.get("strategy.trailing_atr_mult", 1.5)
-        max_min = self.config.get("strategy.max_trade_minutes", 0)
+        # Only one exit pass at a time — the signal loop and the fast monitor
+        # both call this; the lock prevents double-closing the same position.
+        async with self._exit_lock:
+            price = self._current_price
+            use_be = self.config.get("strategy.use_breakeven", True)
+            be_r = self.config.get("strategy.breakeven_trigger_r", 1.0)
+            use_trail = self.config.get("strategy.use_trailing", False)
+            trail_mult = self.config.get("strategy.trailing_atr_mult", 1.5)
+            max_min = self.config.get("strategy.max_trade_minutes", 0)
 
-        session = get_session(self.engine)
-        try:
-            for sig in session.query(Signal).filter(Signal.is_closed == False).all():
-                # Break-even & trailing stop adjustments (persisted)
-                self._manage_stop(session, sig, price, use_be, be_r, use_trail, trail_mult)
+            session = get_session(self.engine)
+            try:
+                for sig in session.query(Signal).filter(Signal.is_closed == False).all():
+                    # Break-even & trailing stop adjustments (persisted)
+                    self._manage_stop(session, sig, price, use_be, be_r, use_trail, trail_mult)
 
-                reason = self.strategy.check_exit(sig, price)
-                if not reason and max_min and sig.entry_time:
-                    age = (utcnow_naive() - sig.entry_time).total_seconds() / 60
-                    if age >= max_min:
-                        reason = "time_exit"
-                if reason:
-                    await self._close_position(session, sig, reason)
-        finally:
-            session.close()
+                    reason = self.strategy.check_exit(sig, price)
+                    if not reason and max_min and sig.entry_time:
+                        age = (utcnow_naive() - sig.entry_time).total_seconds() / 60
+                        if age >= max_min:
+                            reason = "time_exit"
+                    if reason:
+                        await self._close_position(session, sig, reason)
+            finally:
+                session.close()
 
     def _manage_stop(self, session, sig, price, use_be, be_r, use_trail, trail_mult):
         """Move stop to break-even after `be_r` R, then optionally trail by ATR."""
@@ -325,5 +357,8 @@ class TradingEngine:
     async def stop(self):
         self._running = False
         self._status = "stopped"
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            self._monitor_task = None
         await self.feed.close()
         logger.info("Trading engine stopped")
