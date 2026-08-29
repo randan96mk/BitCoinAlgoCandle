@@ -1,1 +1,116 @@
-<!doctype html><title>signals</title><h1>signals (placeholder)</h1>
+{% extends "base.html" %}
+{% set active = "signals" %}
+{% block title %}Signal History - BTC Trading Alerts{% endblock %}
+{% block content %}
+<div class="space-y-3">
+    <div class="flex items-center justify-between">
+        <h1 class="text-lg font-bold">Signal History</h1>
+        <div class="flex items-center gap-2 text-xs">
+            <select id="filter-dir" class="bg-surface border border-border rounded px-2.5 py-1.5">
+                <option value="">All Directions</option>
+                <option value="long">Long Only</option>
+                <option value="short">Short Only</option>
+            </select>
+            <select id="filter-status" class="bg-surface border border-border rounded px-2.5 py-1.5">
+                <option value="">All Status</option>
+                <option value="true">Closed</option>
+                <option value="false">Open</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="bg-surface rounded-lg border border-border overflow-x-auto">
+        <table class="w-full text-xs">
+            <thead class="text-muted border-b border-border bg-card">
+                <tr>
+                    <th class="text-left px-3 py-2.5">Date</th>
+                    <th class="text-left px-3 py-2.5">Dir</th>
+                    <th class="text-left px-3 py-2.5">Pattern</th>
+                    <th class="text-left px-3 py-2.5">Confirmation</th>
+                    <th class="text-right px-3 py-2.5">Entry</th>
+                    <th class="text-right px-3 py-2.5">Exit</th>
+                    <th class="text-right px-3 py-2.5">SL</th>
+                    <th class="text-right px-3 py-2.5">TP1</th>
+                    <th class="text-right px-3 py-2.5">TP3</th>
+                    <th class="text-right px-3 py-2.5">PnL</th>
+                    <th class="text-right px-3 py-2.5">PnL %</th>
+                    <th class="text-center px-3 py-2.5">Result</th>
+                    <th class="text-right px-3 py-2.5">Duration</th>
+                    <th class="text-center px-3 py-2.5">Score</th>
+                    <th class="text-left px-3 py-2.5">Reason</th>
+                </tr>
+            </thead>
+            <tbody id="history-body" class="divide-y divide-border/50"></tbody>
+        </table>
+    </div>
+    <div class="flex justify-between items-center text-xs">
+        <span id="total-count" class="text-muted"></span>
+        <div class="space-x-2">
+            <button id="prev-btn" class="px-3 py-1.5 bg-card border border-border rounded disabled:opacity-30 hover:bg-surface transition">Prev</button>
+            <button id="next-btn" class="px-3 py-1.5 bg-card border border-border rounded disabled:opacity-30 hover:bg-surface transition">Next</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let offset = 0;
+const limit = 30;
+
+async function loadSignals() {
+    const dir = document.getElementById('filter-dir').value;
+    const status = document.getElementById('filter-status').value;
+    let url = `/api/signals?limit=${limit}&offset=${offset}`;
+    if (dir) url += `&direction=${dir}`;
+    if (status) url += `&is_closed=${status}`;
+
+    const data = await fetchJSON(url);
+    if (!data) return;
+    document.getElementById('total-count').textContent = `${data.total} signals`;
+    document.getElementById('prev-btn').disabled = offset === 0;
+    document.getElementById('next-btn').disabled = offset + limit >= data.total;
+
+    document.getElementById('history-body').innerHTML = data.signals.map(s => `
+        <tr class="hover:bg-card/50 transition">
+            <td class="px-3 py-2 text-muted">${s.timestamp ? new Date(s.timestamp).toLocaleString() : '--'}</td>
+            <td class="px-3 py-2">
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold
+                    ${s.direction === 'long' ? 'bg-green-900/60 text-profit' : 'bg-red-900/60 text-loss'}">
+                    ${s.direction?.toUpperCase()}
+                </span>
+            </td>
+            <td class="px-3 py-2">
+                <span class="text-yellow-300">&#128367; ${s.primary_pattern || '--'}</span>
+                ${(s.secondary_patterns && s.secondary_patterns.length) ? `<div class="text-[9px] text-muted">also: ${s.secondary_patterns.join(', ')}</div>` : ''}
+            </td>
+            <td class="px-3 py-2 text-muted text-[10px]">${s.confirmation_type || '--'}${s.price_action_context && s.price_action_context !== 'none' ? '<br>' + s.price_action_context.replace(/_/g,' ') : ''}</td>
+            <td class="px-3 py-2 text-right font-mono">${s.entry_price?.toFixed(2) || '--'}</td>
+            <td class="px-3 py-2 text-right font-mono">${s.exit_price?.toFixed(2) || '--'}</td>
+            <td class="px-3 py-2 text-right font-mono text-loss">${s.stop_loss?.toFixed(2) || '--'}</td>
+            <td class="px-3 py-2 text-right font-mono text-profit">${s.tp1?.toFixed(2) || '--'}</td>
+            <td class="px-3 py-2 text-right font-mono text-profit">${s.tp3?.toFixed(2) || '--'}</td>
+            <td class="px-3 py-2 text-right font-mono font-medium ${s.pnl > 0 ? 'text-profit' : s.pnl < 0 ? 'text-loss' : ''}">
+                ${s.pnl != null ? (s.pnl > 0 ? '+' : '') + s.pnl.toFixed(2) : '--'}
+            </td>
+            <td class="px-3 py-2 text-right font-mono ${s.pnl_pct > 0 ? 'text-profit' : s.pnl_pct < 0 ? 'text-loss' : ''}">
+                ${s.pnl_pct != null ? (s.pnl_pct > 0 ? '+' : '') + s.pnl_pct.toFixed(2) + '%' : '--'}
+            </td>
+            <td class="px-3 py-2 text-center">
+                ${s.is_closed
+                    ? `<span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${s.is_winner ? 'bg-green-900/60 text-profit' : 'bg-red-900/60 text-loss'}">${s.is_winner ? 'WIN' : 'LOSS'}</span>`
+                    : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-400">OPEN</span>'}
+            </td>
+            <td class="px-3 py-2 text-right font-mono text-muted">${s.duration_min ? s.duration_min + 'm' : '--'}</td>
+            <td class="px-3 py-2 text-center font-mono">${s.score ? Math.round(s.score) + '/100' : '--'}</td>
+            <td class="px-3 py-2 text-muted">${s.exit_reason || '--'}</td>
+        </tr>
+    `).join('');
+}
+
+document.getElementById('filter-dir').onchange = () => { offset = 0; loadSignals(); };
+document.getElementById('filter-status').onchange = () => { offset = 0; loadSignals(); };
+document.getElementById('prev-btn').onclick = () => { offset = Math.max(0, offset - limit); loadSignals(); };
+document.getElementById('next-btn').onclick = () => { offset += limit; loadSignals(); };
+loadSignals();
+</script>
+{% endblock %}

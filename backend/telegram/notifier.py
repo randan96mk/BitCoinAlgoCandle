@@ -83,6 +83,39 @@ class TelegramNotifier:
             f"<b>Time:</b> {_timestamp_line()}"
         )
 
+    def format_pattern_entry_signal(self, direction: str, symbol: str, timeframe: str,
+                                    primary_pattern: str, secondary_patterns: list,
+                                    confirmation: str, score: float,
+                                    entry: float, sl: float, tp1: float, tp2: float,
+                                    tp3: float, confirms: dict) -> str:
+        """Candlestick-led entry alert — leads with the pattern (the trade reason)."""
+        emoji = "\U0001f7e2" if direction == "long" else "\U0001f534"
+        dir_label = "LONG" if direction == "long" else "SHORT"
+        risk = abs(entry - sl)
+        reward = abs(tp3 - entry)
+        rr = f"1:{reward / risk:.1f}" if risk > 0 else "N/A"
+        also = ""
+        if secondary_patterns:
+            also = f"\n<b>Also detected:</b> {', '.join(secondary_patterns)}"
+        active = [k.upper() for k, v in (confirms or {}).items() if v]
+        conf_line = (" ".join(active) + " ✓") if active else "pattern only"
+
+        return (
+            f"{emoji} <b>{dir_label}</b> — BTC FUTURES SIGNAL\n\n"
+            f"\U0001f56f <b>Pattern:</b> {primary_pattern}{also}\n"
+            f"<b>Confirmation:</b> {confirmation}\n"
+            f"<b>Score:</b> {score:.0f}/100\n"
+            f"<b>Confluence:</b> {conf_line}\n\n"
+            f"<b>Pair:</b> {symbol} | <b>TF:</b> {timeframe}\n"
+            f"<b>Entry:</b> {entry:.2f}\n"
+            f"<b>Stop Loss:</b> {sl:.2f}\n"
+            f"<b>TP1:</b> {tp1:.2f}\n"
+            f"<b>TP2:</b> {tp2:.2f}\n"
+            f"<b>TP3:</b> {tp3:.2f}\n\n"
+            f"<b>Risk/Reward:</b> {rr}\n"
+            f"<b>Time:</b> {_timestamp_line()}"
+        )
+
     def format_exit_signal(self, direction: str, symbol: str,
                            entry: float, exit_price: float,
                            pnl: float, pnl_pct: float,

@@ -1,1 +1,174 @@
-<!doctype html><title>settings</title><h1>settings (placeholder)</h1>
+{% extends "base.html" %}
+{% set active = "settings" %}
+{% block title %}Settings - BTC Trading Alerts{% endblock %}
+{% block content %}
+<div class="space-y-3 max-w-4xl mx-auto">
+    <h1 class="text-lg font-bold">Configuration</h1>
+
+    <form id="settings-form" class="space-y-3">
+        <div class="bg-surface rounded-lg p-4 border border-border">
+            <h2 class="text-sm font-semibold mb-3">Telegram</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div>
+                    <label class="block text-muted mb-1">Bot Token</label>
+                    <input type="text" id="telegram.bot_token" class="w-full bg-card border border-border rounded px-2.5 py-2" placeholder="123456:ABC-DEF...">
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">Chat ID</label>
+                    <input type="text" id="telegram.chat_id" class="w-full bg-card border border-border rounded px-2.5 py-2" placeholder="-1001234567890">
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="telegram.enabled" class="rounded bg-card border-border">
+                    <label class="text-muted">Enable Telegram Alerts</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-surface rounded-lg p-4 border border-border">
+            <h2 class="text-sm font-semibold mb-3">Exchange</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div>
+                    <label class="block text-muted mb-1">Exchange</label>
+                    <select id="exchange.name" class="w-full bg-card border border-border rounded px-2.5 py-2">
+                        <option value="delta">Delta (India)</option><option value="binance">Binance</option><option value="bybit">Bybit</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">Symbol</label>
+                    <input type="text" id="exchange.symbol" class="w-full bg-card border border-border rounded px-2.5 py-2" value="BTC/USDT">
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">Timeframe</label>
+                    <select id="strategy.timeframe" class="w-full bg-card border border-border rounded px-2.5 py-2">
+                        <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option>
+                        <option value="15m">15m</option><option value="30m">30m</option><option value="1h">1h</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">HTF Confirmation</label>
+                    <select id="strategy.htf_timeframe" class="w-full bg-card border border-border rounded px-2.5 py-2">
+                        <option value="5m">5m</option><option value="15m">15m</option><option value="30m">30m</option>
+                        <option value="1h">1h</option><option value="4h">4h</option><option value="240">4h (240)</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="strategy.confirmations.enable_htf" class="rounded bg-card border-border">
+                    <label class="text-muted">Use HTF Filter</label>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="strategy.exit_on_reversal" class="rounded bg-card border-border">
+                    <label class="text-muted">Exit on Opposite Pattern</label>
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">Dashboard Refresh (sec)</label>
+                    <input type="number" min="3" id="server.refresh_interval" class="w-full bg-card border border-border rounded px-2.5 py-2" value="5">
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-surface rounded-lg p-4 border border-border">
+            <h2 class="text-sm font-semibold mb-3">Risk Management</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div>
+                    <label class="block text-muted mb-1">Position Size (USDT)</label>
+                    <input type="number" id="risk.position_size" class="w-full bg-card border border-border rounded px-2.5 py-2" value="100">
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">SL Buffer (× ATR)</label>
+                    <input type="number" step="0.05" id="strategy.sl_buffer_atr_mult" class="w-full bg-card border border-border rounded px-2.5 py-2" value="0.25">
+                    <span class="text-[10px] text-muted">Added beyond pattern low/high</span>
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">Risk %</label>
+                    <input type="number" step="0.1" id="risk.risk_pct" class="w-full bg-card border border-border rounded px-2.5 py-2" value="1.0">
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">Max Loss (points)</label>
+                    <input type="number" min="0" step="1" id="risk.max_loss_points" class="w-full bg-card border border-border rounded px-2.5 py-2" value="400">
+                    <span class="text-[10px] text-muted">Caps stop distance; 0 = disabled</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-surface rounded-lg p-4 border border-border">
+            <h2 class="text-sm font-semibold mb-3">Candlestick Strategy</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div>
+                    <label class="block text-muted mb-1">Min Signal Score</label>
+                    <input type="number" min="0" max="100" id="strategy.min_signal_score" class="w-full bg-card border border-border rounded px-2.5 py-2" value="70">
+                </div>
+                <div>
+                    <label class="block text-muted mb-1">Confirmation Mode</label>
+                    <select id="strategy.confirmation_mode" class="w-full bg-card border border-border rounded px-2.5 py-2">
+                        <option value="breakout">Pattern breakout</option>
+                        <option value="close">Candle close</option>
+                        <option value="none">None</option>
+                    </select>
+                </div>
+                <div><label class="block text-muted mb-1">Confirmation Window (bars)</label><input type="number" min="1" id="strategy.confirmation_window" class="w-full bg-card border border-border rounded px-2.5 py-2" value="3"></div>
+                <div><label class="block text-muted mb-1">Cooldown Bars</label><input type="number" min="0" id="strategy.cooldown_bars" class="w-full bg-card border border-border rounded px-2.5 py-2" value="5"></div>
+                <div><label class="block text-muted mb-1">TP1 (R)</label><input type="number" step="0.1" id="strategy.tp1_r" class="w-full bg-card border border-border rounded px-2.5 py-2" value="1.0"></div>
+                <div><label class="block text-muted mb-1">TP2 (R)</label><input type="number" step="0.1" id="strategy.tp2_r" class="w-full bg-card border border-border rounded px-2.5 py-2" value="2.0"></div>
+                <div><label class="block text-muted mb-1">TP3 (R)</label><input type="number" step="0.1" id="strategy.tp3_r" class="w-full bg-card border border-border rounded px-2.5 py-2" value="3.0"></div>
+                <div><label class="block text-muted mb-1">ATR Length</label><input type="number" id="strategy.atr_length" class="w-full bg-card border border-border rounded px-2.5 py-2" value="14"></div>
+            </div>
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mt-4 mb-2">Optional Confirmations (individually toggleable)</h3>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.confirmations.enable_ema" class="rounded bg-card border-border"><span class="text-muted">EMA trend</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.confirmations.enable_rsi" class="rounded bg-card border-border"><span class="text-muted">RSI regime</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.confirmations.enable_adx" class="rounded bg-card border-border"><span class="text-muted">ADX strength</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.confirmations.enable_cardwell" class="rounded bg-card border-border"><span class="text-muted">Cardwell RSI regime</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.confirmations.enable_volume" class="rounded bg-card border-border"><span class="text-muted">Volume</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.use_breakeven" class="rounded bg-card border-border"><span class="text-muted">Break-even stop</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.use_trailing" class="rounded bg-card border-border"><span class="text-muted">Trailing stop</span></label>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded text-xs font-semibold transition">Save Configuration</button>
+            <span id="save-status" class="text-xs text-profit hidden">Saved!</span>
+        </div>
+    </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadConfig() {
+    const config = await fetchJSON('/api/config');
+    if (!config) return;
+    function setVal(path, val) {
+        const el = document.getElementById(path);
+        if (!el) return;
+        if (el.type === 'checkbox') el.checked = val;
+        else el.value = val;
+    }
+    function walk(obj, prefix='') {
+        for (const [k, v] of Object.entries(obj)) {
+            const path = prefix ? prefix + '.' + k : k;
+            if (typeof v === 'object' && v !== null) walk(v, path);
+            else setVal(path, v);
+        }
+    }
+    walk(config);
+}
+document.getElementById('settings-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const inputs = e.target.querySelectorAll('input, select');
+    const data = {};
+    inputs.forEach(el => {
+        if (!el.id) return;
+        data[el.id] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value;
+    });
+    const resp = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+    let result = {};
+    try { result = await resp.json(); } catch(e) {}
+    const s = document.getElementById('save-status');
+    s.textContent = result.needs_reload
+        ? (result.reloaded ? 'Saved — engine restarted with new settings' : 'Saved — but engine could not reconnect')
+        : 'Saved!';
+    s.className = 'text-xs ' + (result.needs_reload && !result.reloaded ? 'text-loss' : 'text-profit');
+    setTimeout(() => s.classList.add('hidden'), 4000);
+};
+loadConfig();
+</script>
+{% endblock %}

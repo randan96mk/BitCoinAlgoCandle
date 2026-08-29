@@ -1,1 +1,132 @@
-<!doctype html><title>analytics</title><h1>analytics (placeholder)</h1>
+{% extends "base.html" %}
+{% set active = "analytics" %}
+{% block title %}Analytics - BTC Trading Alerts{% endblock %}
+{% block content %}
+<div class="space-y-3">
+    <h1 class="text-lg font-bold">Performance Analytics</h1>
+
+    <div id="stats-grid" class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2"></div>
+
+    <!-- Which candlestick patterns actually work on BTC futures -->
+    <div class="bg-surface rounded-lg border border-border overflow-x-auto">
+        <div class="px-4 pt-3 text-xs font-semibold text-muted uppercase tracking-wider">Pattern Performance</div>
+        <table class="w-full text-xs mt-2">
+            <thead class="text-muted border-b border-border bg-card">
+                <tr>
+                    <th class="text-left px-3 py-2">Pattern</th>
+                    <th class="text-right px-3 py-2">Trades</th>
+                    <th class="text-right px-3 py-2">Win Rate</th>
+                    <th class="text-right px-3 py-2">Net PnL</th>
+                    <th class="text-right px-3 py-2">Avg PnL</th>
+                    <th class="text-right px-3 py-2">Avg R</th>
+                    <th class="text-right px-3 py-2">L / S</th>
+                </tr>
+            </thead>
+            <tbody id="pattern-body" class="divide-y divide-border/50"></tbody>
+        </table>
+        <div class="px-4 pt-3 pb-1 text-xs font-semibold text-muted uppercase tracking-wider">Pattern + Confirmation Combos</div>
+        <table class="w-full text-xs">
+            <tbody id="combo-body" class="divide-y divide-border/50"></tbody>
+        </table>
+        <div id="pattern-empty" class="px-4 py-4 text-center text-muted text-xs">No closed trades yet — pattern stats appear as trades complete.</div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="bg-surface rounded-lg p-4 border border-border">
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Equity Curve</h3>
+            <canvas id="equity-chart" height="180"></canvas>
+        </div>
+        <div class="bg-surface rounded-lg p-4 border border-border">
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Monthly PnL</h3>
+            <canvas id="monthly-chart" height="180"></canvas>
+        </div>
+        <div class="bg-surface rounded-lg p-4 border border-border">
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Daily PnL (Last 30 Days)</h3>
+            <canvas id="daily-chart" height="180"></canvas>
+        </div>
+        <div class="bg-surface rounded-lg p-4 border border-border">
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Win / Loss</h3>
+            <canvas id="winloss-chart" height="180"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+const chartDefaults = { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }, y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } } } };
+
+async function loadAnalytics() {
+    const data = await fetchJSON('/api/analytics');
+    if (!data) return;
+
+    const stats = [
+        {l:'Total Signals', v:data.total_signals, c:'text-white'},
+        {l:'Win Rate', v:data.win_rate.toFixed(1)+'%', c:data.win_rate>=50?'text-profit':'text-loss'},
+        {l:'Net Profit', v:'$'+data.net_profit.toFixed(2), c:data.net_profit>=0?'text-profit':'text-loss'},
+        {l:'Profit Factor', v:data.profit_factor.toFixed(2), c:'text-blue-400'},
+        {l:'Max Drawdown', v:'$'+data.max_drawdown.toFixed(2), c:'text-sell'},
+        {l:'Avg Duration', v:data.avg_duration_min.toFixed(0)+'m', c:'text-gray-300'},
+        {l:'Total Profit', v:'$'+data.total_profit.toFixed(2), c:'text-profit'},
+        {l:'Total Loss', v:'$'+data.total_loss.toFixed(2), c:'text-loss'},
+        {l:'Avg Win', v:'$'+data.avg_profit.toFixed(2), c:'text-profit'},
+        {l:'Avg Loss', v:'$'+data.avg_loss.toFixed(2), c:'text-loss'},
+        {l:'Long W/R', v:data.long_win_rate.toFixed(1)+'%', c:'text-profit'},
+        {l:'Short W/R', v:data.short_win_rate.toFixed(1)+'%', c:'text-loss'},
+    ];
+
+    document.getElementById('stats-grid').innerHTML = stats.map(s => `
+        <div class="bg-surface rounded-lg p-3 border border-border">
+            <div class="text-[10px] text-muted uppercase tracking-wider">${s.l}</div>
+            <div class="text-base font-mono font-semibold mt-0.5 ${s.c}">${s.v}</div>
+        </div>
+    `).join('');
+
+    if (data.equity_curve.length) {
+        new Chart(document.getElementById('equity-chart'), {
+            type:'line', data:{labels:data.equity_curve.map(p=>p.time.slice(0,10)),datasets:[{data:data.equity_curve.map(p=>p.equity),borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.08)',fill:true,tension:0.3,pointRadius:0,borderWidth:1.5}]}, options:chartDefaults
+        });
+    }
+    if (data.monthly_pnl && data.monthly_pnl.length) {
+        new Chart(document.getElementById('monthly-chart'), {
+            type:'bar', data:{labels:data.monthly_pnl.map(p=>p.month),datasets:[{data:data.monthly_pnl.map(p=>p.pnl),backgroundColor:data.monthly_pnl.map(p=>p.pnl>=0?'#22c55e':'#ef4444'),borderRadius:3}]}, options:chartDefaults
+        });
+    }
+    if (data.daily_pnl.length) {
+        new Chart(document.getElementById('daily-chart'), {
+            type:'bar', data:{labels:data.daily_pnl.map(p=>p.day.slice(5)),datasets:[{data:data.daily_pnl.map(p=>p.pnl),backgroundColor:data.daily_pnl.map(p=>p.pnl>=0?'#22c55e':'#ef4444'),borderRadius:2}]}, options:chartDefaults
+        });
+    }
+    new Chart(document.getElementById('winloss-chart'), {
+        type:'doughnut', data:{labels:['Wins','Losses'],datasets:[{data:[data.win_rate,data.loss_rate],backgroundColor:['#22c55e','#ef4444'],borderWidth:0}]},
+        options:{responsive:true,plugins:{legend:{position:'bottom',labels:{color:'#64748b',font:{size:11}}}},cutout:'65%'}
+    });
+}
+
+function pnlCls(v){ return v>0?'text-profit':v<0?'text-loss':'text-muted'; }
+function wrCls(v){ return v>=50?'text-profit':'text-loss'; }
+
+async function loadPatternAnalytics() {
+    const data = await fetchJSON('/api/pattern-analytics');
+    if (!data) return;
+    const rowsHtml = (arr) => arr.map(p => `
+        <tr class="hover:bg-card/50 transition">
+            <td class="px-3 py-2"><span class="text-yellow-300">&#128367; ${p.pattern}</span></td>
+            <td class="px-3 py-2 text-right font-mono">${p.trades}</td>
+            <td class="px-3 py-2 text-right font-mono ${wrCls(p.win_rate)}">${p.win_rate}%</td>
+            <td class="px-3 py-2 text-right font-mono ${pnlCls(p.net_pnl)}">${p.net_pnl>0?'+':''}${p.net_pnl}</td>
+            <td class="px-3 py-2 text-right font-mono ${pnlCls(p.avg_pnl)}">${p.avg_pnl>0?'+':''}${p.avg_pnl}</td>
+            <td class="px-3 py-2 text-right font-mono ${pnlCls(p.avg_r)}">${p.avg_r>0?'+':''}${p.avg_r}R</td>
+            <td class="px-3 py-2 text-right font-mono text-muted">${p.long}/${p.short}</td>
+        </tr>`).join('');
+    const hasData = (data.patterns && data.patterns.length);
+    document.getElementById('pattern-empty').style.display = hasData ? 'none' : '';
+    document.getElementById('pattern-body').innerHTML = hasData ? rowsHtml(data.patterns) : '';
+    document.getElementById('combo-body').innerHTML = (data.combinations && data.combinations.length)
+        ? rowsHtml(data.combinations) : '';
+}
+
+loadAnalytics();
+loadPatternAnalytics();
+</script>
+{% endblock %}
