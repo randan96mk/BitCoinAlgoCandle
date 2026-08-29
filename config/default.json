@@ -1,0 +1,104 @@
+{
+  "exchange": {
+    "name": "delta",
+    "symbol": "BTC/USDT",
+    "type": "future"
+  },
+  "strategy": {
+    "engine": "candlestick",
+    "timeframe": "1m",
+    "htf_timeframe": "15m",
+
+    "min_signal_score": 70,
+    "confirmation_mode": "breakout",
+    "confirmation_window": 3,
+    "cooldown_bars": 5,
+
+    "candle": {
+      "doji_body_ratio": 0.1,
+      "marubozu_body_ratio": 0.9,
+      "long_body_ratio": 0.6,
+      "small_body_ratio": 0.33,
+      "pin_wick_body_ratio": 2.0,
+      "hammer_lower_wick_ratio": 2.0,
+      "hammer_upper_wick_max": 0.3,
+      "rejection_wick_ratio": 0.5,
+      "engulf_min_ratio": 1.0,
+      "min_range_atr_ratio": 0.3
+    },
+
+    "price_action": {
+      "swing_lookback": 5,
+      "sr_lookback": 50,
+      "sr_zone_atr_mult": 0.5,
+      "breakout_lookback": 20
+    },
+
+    "confirmations": {
+      "enable_ema": true,
+      "enable_rsi": true,
+      "enable_adx": false,
+      "enable_htf": true,
+      "enable_cardwell": true,
+      "enable_volume": true,
+      "ema_fast": 21,
+      "ema_slow": 50,
+      "rsi_length": 14,
+      "rsi_bull_min": 45,
+      "rsi_bear_max": 55,
+      "adx_length": 14,
+      "adx_min_strength": 20,
+      "cardwell_bull_low": 40,
+      "cardwell_bull_high": 80,
+      "cardwell_bear_low": 20,
+      "cardwell_bear_high": 60,
+      "volume_avg_period": 20,
+      "volume_confirm_ratio": 1.2
+    },
+
+    "weights": {
+      "pattern_strength": 40,
+      "pattern_quality": 10,
+      "price_action": 10,
+      "ema": 10,
+      "rsi": 5,
+      "adx": 5,
+      "cardwell": 5,
+      "volume": 5,
+      "breakout": 10,
+      "risk_reward": 5
+    },
+
+    "atr_length": 14,
+    "sl_buffer_atr_mult": 0.25,
+    "tp1_r": 1.0,
+    "tp2_r": 2.0,
+    "tp3_r": 3.0,
+    "exit_on_reversal": true,
+    "reversal_min_score": 65,
+    "use_breakeven": true,
+    "breakeven_trigger_r": 1.0,
+    "use_trailing": false,
+    "trailing_atr_mult": 1.5,
+    "max_trade_minutes": 0
+  },
+  "risk": {
+    "position_size": 100,
+    "risk_pct": 1.0,
+    "max_loss_points": 400
+  },
+  "telegram": {
+    "bot_token": "",
+    "chat_id": "",
+    "enabled": false
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "refresh_interval": 5
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/trading.log"
+  }
+}

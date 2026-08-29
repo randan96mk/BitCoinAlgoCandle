@@ -1,0 +1,109 @@
+"""
+Telegram alert sender.
+"""
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+import httpx
+
+from backend.config import Config
+
+logger = logging.getLogger("telegram")
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _timestamp_line() -> str:
+    """Current time as 'YYYY-MM-DD HH:MM UTC (hh:MM AM/PM IST)'."""
+    now_utc = datetime.now(timezone.utc)
+    now_ist = now_utc.astimezone(IST)
+    ist_12h = now_ist.strftime('%I:%M %p').lstrip('0')
+    return f"{now_utc.strftime('%Y-%m-%d %H:%M')} UTC ({ist_12h} IST)"
+
+
+class TelegramNotifier:
+    def __init__(self, config: Optional[Config] = None):
+        cfg = config or Config()
+        self.bot_token = cfg.get("telegram.bot_token", "")
+        self.chat_id = cfg.get("telegram.chat_id", "")
+        self.enabled = cfg.get("telegram.enabled", False) and bool(self.bot_token) and bool(self.chat_id)
+
+    @property
+    def base_url(self) -> str:
+        return f"https://api.telegram.org/bot{self.bot_token}"
+
+    async def send_message(self, text: str, parse_mode: str = "HTML") -> bool:
+        if not self.enabled:
+            logger.debug("Telegram disabled, skipping message")
+            return False
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{self.base_url}/sendMessage",
+                    json={
+                        "chat_id": self.chat_id,
+                        "text": text,
+                        "parse_mode": parse_mode,
+                    },
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    logger.info("Telegram message sent")
+                    return True
+                logger.error(f"Telegram error: {resp.status_code} {resp.text}")
+                return False
+        except Exception as e:
+            logger.error(f"Telegram send failed: {e}")
+            return False
+
+    def format_entry_signal(self, direction: str, symbol: str, timeframe: str,
+                            entry: float, sl: float, tp1: float, tp2: float,
+                            tp3: float, score: float, regime: str,
+                            rsi: float, adx: float) -> str:
+        emoji = "\U0001f680" if direction == "long" else "\U0001f534"
+        dir_label = "BUY" if direction == "long" else "SELL"
+        risk = abs(entry - sl)
+        reward = abs(tp3 - entry)
+        rr = f"1:{reward / risk:.1f}" if risk > 0 else "N/A"
+
+        return (
+            f"{emoji} <b>{dir_label} SIGNAL</b>\n\n"
+            f"<b>Pair:</b> {symbol}\n"
+            f"<b>Timeframe:</b> {timeframe}\n"
+            f"<b>Regime:</b> {regime.upper()}\n\n"
+            f"<b>Entry:</b> {entry:.2f}\n"
+            f"<b>Stop Loss:</b> {sl:.2f}\n"
+            f"<b>TP1:</b> {tp1:.2f}\n"
+            f"<b>TP2:</b> {tp2:.2f}\n"
+            f"<b>TP3:</b> {tp3:.2f}\n\n"
+            f"<b>Risk/Reward:</b> {rr}\n"
+            f"<b>Signal Score:</b> {score:.0f}%\n"
+            f"<b>RSI:</b> {rsi:.1f} | <b>ADX:</b> {adx:.1f}\n\n"
+            f"<b>Time:</b> {_timestamp_line()}"
+        )
+
+    def format_exit_signal(self, direction: str, symbol: str,
+                           entry: float, exit_price: float,
+                           pnl: float, pnl_pct: float,
+                           reason: str) -> str:
+        emoji = "✅" if pnl >= 0 else "❌"
+        reason_labels = {
+            "stop_loss": "Stop Loss",
+            "take_profit_1": "Take Profit 1",
+            "take_profit_2": "Take Profit 2",
+            "take_profit_3": "Take Profit 3",
+            "reversal": "Trend Reversal",
+        }
+        reason_label = reason_labels.get(reason, reason.replace("_", " ").title())
+        return (
+            f"{emoji} <b>Trade Closed</b>\n\n"
+            f"<b>Pair:</b> {symbol}\n"
+            f"<b>Direction:</b> {direction.upper()}\n"
+            f"<b>Entry:</b> {entry:.2f}\n"
+            f"<b>Exit:</b> {exit_price:.2f}\n"
+            f"<b>PnL:</b> {pnl:.2f} USDT\n"
+            f"<b>Profit:</b> {pnl_pct:.2f}%\n"
+            f"<b>Reason:</b> {reason_label}\n\n"
+            f"<b>Time:</b> {_timestamp_line()}"
+        )
