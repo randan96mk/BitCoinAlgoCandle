@@ -1,1 +1,531 @@
-<!doctype html><title>dashboard</title><h1>dashboard (placeholder)</h1>
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% block title %}Terminal - BTC Futures Candlestick{% endblock %}
+{% block main_class %}p-1{% endblock %}
+{% block content %}
+<div class="grid grid-cols-12 gap-2" style="height:calc(100vh - 48px);overflow:hidden;">
+
+    <!-- ═══ LEFT SIDEBAR: Ticker + Indicators + Trade Levels ═══ -->
+    <div class="col-span-2 flex flex-col gap-2 overflow-y-auto scrollbar-thin" style="max-height:calc(100vh - 48px);">
+
+        <!-- Ticker -->
+        <div class="bg-surface rounded-lg p-3 border border-border">
+            <div class="flex items-center justify-between mb-1">
+                <span id="ticker-symbol" class="text-xs text-muted font-medium">BTCUSD PERP</span>
+                <span id="tf-badge" class="text-[10px] px-1.5 py-0.5 rounded bg-card text-muted">1m</span>
+            </div>
+            <div id="live-price" class="text-2xl font-mono font-bold text-profit">--</div>
+            <div class="mt-1">
+                <span id="exchange-badge" class="text-[9px] px-1.5 py-0.5 rounded bg-blue-600/25 text-blue-300 uppercase tracking-wider">--</span>
+            </div>
+            <div class="flex items-center gap-2 mt-1">
+                <span id="price-change" class="text-xs font-mono px-1.5 py-0.5 rounded bg-green-900/50 text-profit">+0.00%</span>
+                <span id="price-high-low" class="text-[10px] text-muted">H -- / L --</span>
+            </div>
+        </div>
+
+        <!-- Regime Card -->
+        <div id="regime-card" class="bg-surface rounded-lg p-3 border border-border">
+            <div class="text-[10px] text-muted uppercase tracking-wider mb-1">Market Regime</div>
+            <div id="regime-label" class="text-lg font-bold text-muted">--</div>
+            <div class="mt-2 space-y-1.5">
+                <div class="flex justify-between text-xs">
+                    <span class="text-muted">Trend</span>
+                    <span id="ind-trend" class="font-medium">--</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-muted">Strength</span>
+                    <div class="flex items-center gap-1">
+                        <div class="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div id="adx-bar" class="h-full bg-blue-500 rounded-full transition-all" style="width:0%"></div>
+                        </div>
+                        <span id="ind-adx" class="text-[10px] font-mono">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Indicators -->
+        <div class="bg-surface rounded-lg p-3 border border-border">
+            <div class="text-[10px] text-muted uppercase tracking-wider mb-2">Indicators</div>
+            <div class="space-y-2">
+                <div>
+                    <div class="flex justify-between text-xs mb-0.5">
+                        <span class="text-muted">RSI (14)</span>
+                        <span id="ind-rsi" class="font-mono font-medium">--</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                        <div id="rsi-bar" class="h-full rounded-full transition-all" style="width:50%;background:#3b82f6"></div>
+                    </div>
+                    <div class="flex justify-between text-[9px] text-muted mt-0.5"><span>0</span><span>30</span><span>50</span><span>70</span><span>100</span></div>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-muted">EMA fast</span>
+                    <span id="ind-sma20" class="font-mono text-yellow-400">--</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-muted">EMA slow</span>
+                    <span id="ind-sma50" class="font-mono text-purple-400">--</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-muted">ATR (14)</span>
+                    <span id="ind-atr" class="font-mono">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Trade -->
+        <div class="bg-surface rounded-lg p-3 border border-border flex-1">
+            <div class="text-[10px] text-muted uppercase tracking-wider mb-2">Active Position</div>
+            <div id="active-trade" class="space-y-1.5 text-xs">
+                <div class="text-center text-muted py-4">No open position</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ CENTER: Chart + RSI + Quick Stats ═══ -->
+    <div class="col-span-8 flex flex-col gap-2" style="max-height:calc(100vh - 48px);overflow:hidden;">
+
+        <!-- Chart toolbar -->
+        <div class="bg-surface rounded-lg px-3 py-1.5 border border-border flex items-center justify-between">
+            <div class="flex items-center gap-1">
+                <div class="flex bg-card rounded text-[11px] border border-border">
+                    <button data-tf="1m" class="tf-btn px-2.5 py-1 rounded-l hover:bg-gray-700 transition bg-blue-600/80 text-white">1m</button>
+                    <button data-tf="3m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition">3m</button>
+                    <button data-tf="5m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition">5m</button>
+                    <button data-tf="15m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition">15m</button>
+                    <button data-tf="30m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition">30m</button>
+                    <button data-tf="1h" class="tf-btn px-2.5 py-1 rounded-r hover:bg-gray-700 transition">1H</button>
+                </div>
+                <div class="w-px h-4 bg-border mx-1"></div>
+                <div class="flex bg-card rounded text-[11px] border border-border">
+                    <button id="toggle-sma" class="ind-btn px-2 py-1 rounded-l hover:bg-gray-700 transition bg-blue-600/60" data-active="true">MA</button>
+                    <button id="toggle-vol" class="ind-btn px-2 py-1 hover:bg-gray-700 transition bg-blue-600/60" data-active="true">Vol</button>
+                    <button id="toggle-rsi" class="ind-btn px-2 py-1 rounded-r hover:bg-gray-700 transition bg-blue-600/60" data-active="true">RSI</button>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 text-[11px]">
+                <span class="flex items-center gap-1"><span class="w-2 h-0.5 bg-yellow-400 inline-block"></span><span class="text-muted">EMA fast</span></span>
+                <span class="flex items-center gap-1"><span class="w-2 h-0.5 bg-purple-500 inline-block"></span><span class="text-muted">EMA slow</span></span>
+                <span id="candle-time" class="text-muted font-mono">--</span>
+                <span class="w-px h-4 bg-border"></span>
+                <span class="flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>
+                    <span class="text-muted">refresh</span>
+                    <span id="refresh-countdown" class="text-blue-400 font-mono">--</span>
+                </span>
+            </div>
+        </div>
+
+        <!-- Main chart -->
+        <div class="bg-surface rounded-lg border border-border overflow-hidden flex-1" style="min-height:0;">
+            <div id="chart-container" style="width:100%;height:100%;"></div>
+        </div>
+
+        <!-- RSI sub-chart -->
+        <div id="rsi-wrapper" class="bg-surface rounded-lg border border-border overflow-hidden" style="height:100px;">
+            <div id="rsi-container" style="width:100%;height:100%;"></div>
+        </div>
+
+        <!-- Quick stats bar -->
+        <div class="bg-surface rounded-lg px-3 py-2 border border-border flex items-center justify-between text-[11px]">
+            <div class="flex items-center gap-4">
+                <div><span class="text-muted">Signals</span> <span id="qs-total" class="font-mono font-medium">0</span></div>
+                <div><span class="text-muted">Win Rate</span> <span id="qs-winrate" class="font-mono font-medium text-profit">0%</span></div>
+                <div><span class="text-muted">Net PnL</span> <span id="qs-pnl" class="font-mono font-medium">$0</span></div>
+                <div><span class="text-muted">Profit Factor</span> <span id="qs-pf" class="font-mono font-medium">0</span></div>
+                <div><span class="text-muted">Max DD</span> <span id="qs-dd" class="font-mono font-medium text-loss">$0</span></div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div><span class="text-muted">Long</span> <span id="qs-long" class="font-mono">0</span> <span class="text-muted">Short</span> <span id="qs-short" class="font-mono">0</span></div>
+                <div><span class="text-muted">Avg Duration</span> <span id="qs-dur" class="font-mono">0m</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ RIGHT SIDEBAR: Signals + Order Book Style ═══ -->
+    <div class="col-span-2 flex flex-col gap-2 overflow-y-auto scrollbar-thin" style="max-height:calc(100vh - 48px);">
+
+        <!-- Last Signal Alert -->
+        <div id="last-signal-card" class="bg-surface rounded-lg p-3 border border-border">
+            <div class="text-[10px] text-muted uppercase tracking-wider mb-1">Last Signal</div>
+            <div id="last-signal-content" class="text-xs text-muted">Waiting...</div>
+        </div>
+
+        <!-- Signal Feed -->
+        <div class="bg-surface rounded-lg p-3 border border-border flex-1" style="min-height:0;">
+            <div class="text-[10px] text-muted uppercase tracking-wider mb-2">Signal Feed</div>
+            <div id="signal-feed" class="space-y-1 overflow-y-auto scrollbar-thin" style="max-height:calc(100vh - 340px);">
+            </div>
+        </div>
+
+        <!-- Session Stats -->
+        <div class="bg-surface rounded-lg p-3 border border-border">
+            <div class="text-[10px] text-muted uppercase tracking-wider mb-2">Session</div>
+            <div class="space-y-1 text-xs">
+                <div class="flex justify-between"><span class="text-muted">Exchange</span><span id="sess-exchange" class="font-mono">--</span></div>
+                <div class="flex justify-between"><span class="text-muted">Symbol</span><span id="sess-symbol" class="font-mono">BTCUSD</span></div>
+                <div class="flex justify-between"><span class="text-muted">Uptime</span><span id="sess-uptime" class="font-mono">--</span></div>
+                <div class="flex justify-between"><span class="text-muted">Last Update</span><span id="sess-update" class="font-mono">--</span></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+// ── Chart setup ──
+const chartEl = document.getElementById('chart-container');
+const rsiEl = document.getElementById('rsi-container');
+const startTime = Date.now();
+
+const darkTheme = {
+    layout: { background: { color: '#1a2332' }, textColor: '#64748b', fontSize: 11 },
+    grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal, vertLine: { color: '#3b82f6', width: 1, style: 3, labelBackgroundColor: '#1e40af' }, horzLine: { color: '#3b82f6', width: 1, style: 3, labelBackgroundColor: '#1e40af' } },
+    rightPriceScale: { borderColor: '#2d3a4a', scaleMargins: { top: 0.05, bottom: 0.15 } },
+    timeScale: { borderColor: '#2d3a4a', timeVisible: true, secondsVisible: false },
+};
+
+const chart = LightweightCharts.createChart(chartEl, darkTheme);
+const candleSeries = chart.addCandlestickSeries({
+    upColor: '#22c55e', downColor: '#ef4444',
+    borderDownColor: '#ef4444', borderUpColor: '#22c55e',
+    wickUpColor: '#22c55e80', wickDownColor: '#ef444480',
+});
+const volumeSeries = chart.addHistogramSeries({
+    priceFormat: { type: 'volume' }, priceScaleId: 'vol',
+});
+chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+const emaFastSeries = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+const emaSlowSeries = chart.addLineSeries({ color: '#8b5cf6', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+
+// RSI chart
+const rsiChart = LightweightCharts.createChart(rsiEl, {
+    ...darkTheme,
+    rightPriceScale: { ...darkTheme.rightPriceScale, scaleMargins: { top: 0.08, bottom: 0.08 } },
+});
+const rsiSeries = rsiChart.addLineSeries({ color: '#3b82f6', lineWidth: 1.5 });
+const rsiOB = rsiChart.addLineSeries({ color: 'rgba(239,68,68,0.25)', lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+const rsiOS = rsiChart.addLineSeries({ color: 'rgba(34,197,94,0.25)', lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+const rsiMid = rsiChart.addLineSeries({ color: 'rgba(100,116,139,0.2)', lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+
+chart.timeScale().subscribeVisibleLogicalRangeChange(r => { if(r) rsiChart.timeScale().setVisibleLogicalRange(r); });
+rsiChart.timeScale().subscribeVisibleLogicalRangeChange(r => { if(r) chart.timeScale().setVisibleLogicalRange(r); });
+
+let tradeLines = [];
+function clearTradeLines() { tradeLines.forEach(l => { try{candleSeries.removePriceLine(l)}catch(e){} }); tradeLines = []; }
+
+let currentTF = '1m', showSMA = true, showVol = true, showRSI = true;
+let knownSignalIds = new Set();
+let firstLoad = true;
+
+let nextRefreshAt = Date.now() + 5000;
+
+// ── Data loader ──
+async function loadAll() {
+    nextRefreshAt = Date.now() + refreshMs;
+    const [chartData, status, signals, analytics] = await Promise.all([
+        fetchJSON(`/api/chart/candles?timeframe=${currentTF}&limit=300`),
+        fetchJSON('/api/status'),
+        fetchJSON('/api/signals?limit=20'),
+        fetchJSON('/api/analytics'),
+    ]);
+
+    // Status
+    if (status) {
+        const dot = document.getElementById('status-dot');
+        const stxt = document.getElementById('engine-status-text');
+        dot.className = status.status === 'running' ? 'pulse-dot live' : 'pulse-dot off';
+        stxt.textContent = status.status;
+        document.getElementById('sess-exchange').textContent = status.exchange || '--';
+        document.getElementById('tf-badge').textContent = status.timeframe || currentTF;
+        // Dynamic market label (symbol + exchange)
+        const mkt = status.market_symbol || 'BTCUSD';
+        document.getElementById('ticker-symbol').textContent = mkt + ' PERP';
+        document.getElementById('sess-symbol').textContent = mkt;
+        const exLabels = { delta: 'Delta India', binance: 'Binance', bybit: 'Bybit' };
+        const exName = exLabels[status.exchange] || (status.exchange || '--');
+        document.getElementById('exchange-badge').textContent = exName;
+        // Apply the configured refresh interval (clamped to a sane floor)
+        if (status.refresh_interval) applyRefreshInterval(status.refresh_interval);
+    }
+
+    // Chart
+    if (chartData && chartData.candles && chartData.candles.length > 0) {
+        // lightweight-charts renders epoch times as UTC; shift so the
+        // axis shows the viewer's local time (matches TradingView).
+        const tzShift = -new Date().getTimezoneOffset() * 60;
+        [chartData.candles, chartData.volumes, chartData.ema_fast, chartData.ema_slow, chartData.rsi, chartData.markers || []]
+            .forEach(arr => arr.forEach(d => { d.time += tzShift; }));
+        candleSeries.setData(chartData.candles);
+        volumeSeries.setData(showVol ? chartData.volumes : []);
+        emaFastSeries.setData(showSMA ? chartData.ema_fast : []);
+        emaSlowSeries.setData(showSMA ? chartData.ema_slow : []);
+        if (chartData.markers && chartData.markers.length) candleSeries.setMarkers(chartData.markers);
+
+        // RSI
+        if (showRSI && chartData.rsi.length) {
+            rsiSeries.setData(chartData.rsi);
+            rsiOB.setData(chartData.rsi.map(d => ({time:d.time, value:70})));
+            rsiOS.setData(chartData.rsi.map(d => ({time:d.time, value:30})));
+            rsiMid.setData(chartData.rsi.map(d => ({time:d.time, value:50})));
+            document.getElementById('rsi-wrapper').style.display = '';
+        }
+
+        // Trade levels on chart
+        clearTradeLines();
+        if (chartData.trade_levels) {
+            chartData.trade_levels.forEach(tl => {
+                const mkLine = (price, color, title) => {
+                    if (!price) return;
+                    tradeLines.push(candleSeries.createPriceLine({
+                        price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title
+                    }));
+                };
+                mkLine(tl.entry, '#3b82f6', 'ENTRY');
+                mkLine(tl.sl, '#ef4444', 'SL');
+                mkLine(tl.tp1, '#22c55e80', 'TP1');
+                mkLine(tl.tp2, '#22c55eB0', 'TP2');
+                mkLine(tl.tp3, '#22c55e', 'TP3');
+            });
+        }
+
+        // Update indicators panel
+        const last = chartData.candles[chartData.candles.length-1];
+        const prev = chartData.candles.length > 1 ? chartData.candles[chartData.candles.length-2] : last;
+        const lastRsi = chartData.rsi.length ? chartData.rsi[chartData.rsi.length-1].value : null;
+        const lastSma20 = chartData.ema_fast.length ? chartData.ema_fast[chartData.ema_fast.length-1].value : null;
+        const lastSma50 = chartData.ema_slow.length ? chartData.ema_slow[chartData.ema_slow.length-1].value : null;
+
+        // Price
+        document.getElementById('live-price').textContent = '$' + last.close.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+        document.getElementById('live-price').className = 'text-2xl font-mono font-bold ' + (last.close >= prev.close ? 'text-profit' : 'text-loss');
+
+        const pctChg = ((last.close - prev.close) / prev.close * 100);
+        const chgEl = document.getElementById('price-change');
+        chgEl.textContent = (pctChg >= 0 ? '+' : '') + pctChg.toFixed(2) + '%';
+        chgEl.className = `text-xs font-mono px-1.5 py-0.5 rounded ${pctChg >= 0 ? 'bg-green-900/50 text-profit' : 'bg-red-900/50 text-loss'}`;
+
+        const highs = chartData.candles.slice(-20).map(c => c.high);
+        const lows = chartData.candles.slice(-20).map(c => c.low);
+        document.getElementById('price-high-low').textContent = `H ${Math.max(...highs).toFixed(0)} / L ${Math.min(...lows).toFixed(0)}`;
+
+        // Indicators
+        document.getElementById('ind-rsi').textContent = lastRsi != null ? lastRsi.toFixed(1) : '--';
+        document.getElementById('ind-rsi').className = 'font-mono font-medium ' + (lastRsi > 70 ? 'text-loss' : lastRsi < 30 ? 'text-profit' : 'text-blue-400');
+        if (lastRsi != null) {
+            document.getElementById('rsi-bar').style.width = lastRsi + '%';
+            document.getElementById('rsi-bar').style.background = lastRsi > 70 ? '#ef4444' : lastRsi < 30 ? '#22c55e' : '#3b82f6';
+        }
+        document.getElementById('ind-sma20').textContent = lastSma20 ? '$' + lastSma20.toLocaleString() : '--';
+        document.getElementById('ind-sma50').textContent = lastSma50 ? '$' + lastSma50.toLocaleString() : '--';
+
+        const trend = lastSma50 ? (last.close > lastSma50 ? 'UPTREND' : 'DOWNTREND') : '--';
+        const tEl = document.getElementById('ind-trend');
+        tEl.textContent = trend;
+        tEl.className = 'font-medium ' + (trend === 'UPTREND' ? 'text-profit' : trend === 'DOWNTREND' ? 'text-loss' : '');
+
+        // Regime
+        const regime = lastRsi >= 40 && lastRsi <= 80 && trend === 'UPTREND' ? 'BULLISH' :
+                       lastRsi >= 20 && lastRsi <= 60 && trend === 'DOWNTREND' ? 'BEARISH' : 'NEUTRAL';
+        const rLabel = document.getElementById('regime-label');
+        rLabel.textContent = regime;
+        rLabel.className = 'text-lg font-bold ' + (regime === 'BULLISH' ? 'text-profit' : regime === 'BEARISH' ? 'text-loss' : 'text-muted');
+        const rCard = document.getElementById('regime-card');
+        rCard.className = 'bg-surface rounded-lg p-3 border ' + (regime === 'BULLISH' ? 'border-green-800 glow-green' : regime === 'BEARISH' ? 'border-red-800 glow-red' : 'border-border');
+
+        // Candle time (un-shift the tz offset applied for axis display)
+        document.getElementById('candle-time').textContent = new Date((last.time - tzShift) * 1000).toLocaleTimeString();
+
+        // Active trade
+        const atEl = document.getElementById('active-trade');
+        if (chartData.trade_levels && chartData.trade_levels.length > 0) {
+            const tl = chartData.trade_levels[0];
+            const isLong = tl.direction === 'long';
+            const unrealized = isLong ? (last.close - tl.entry) : (tl.entry - last.close);
+            const unrealizedPct = (unrealized / tl.entry * 100);
+            const risk = Math.abs(tl.entry - tl.sl);
+            const reward = Math.abs(tl.tp3 - tl.entry);
+            const rr = risk > 0 ? (reward / risk).toFixed(1) : '--';
+            atEl.innerHTML = `
+                <div class="flex justify-between"><span class="text-muted">Side</span><span class="font-bold ${isLong ? 'text-profit' : 'text-loss'}">${tl.direction.toUpperCase()}</span></div>
+                <div class="flex justify-between"><span class="text-muted">Pattern</span><span class="text-yellow-300 text-[11px]">&#128367; ${tl.pattern || '--'}</span></div>
+                <div class="flex justify-between"><span class="text-buy">Entry</span><span class="font-mono">$${tl.entry?.toFixed(2)}</span></div>
+                <div class="flex justify-between"><span class="text-loss">SL</span><span class="font-mono">$${tl.sl?.toFixed(2)}</span></div>
+                <div class="flex justify-between"><span class="text-profit">TP1</span><span class="font-mono">$${tl.tp1?.toFixed(2)}</span></div>
+                <div class="flex justify-between"><span class="text-profit">TP2</span><span class="font-mono">$${tl.tp2?.toFixed(2)}</span></div>
+                <div class="flex justify-between"><span class="text-profit">TP3</span><span class="font-mono">$${tl.tp3?.toFixed(2)}</span></div>
+                <div class="border-t border-border my-1 pt-1"></div>
+                <div class="flex justify-between"><span class="text-muted">R:R</span><span class="font-mono">1:${rr}</span></div>
+                <div class="flex justify-between"><span class="text-muted">Unrealized</span><span class="font-mono ${unrealized >= 0 ? 'text-profit' : 'text-loss'}">${unrealized >= 0 ? '+' : ''}${unrealized.toFixed(2)} (${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(2)}%)</span></div>
+            `;
+        } else {
+            atEl.innerHTML = '<div class="text-center text-muted py-4">No open position</div>';
+        }
+    }
+
+    // Last signal card
+    if (status && status.last_signal) {
+        const s = status.last_signal;
+        const isLong = s.type === 'long';
+        const card = document.getElementById('last-signal-card');
+        card.className = `bg-surface rounded-lg p-3 border ${isLong ? 'border-green-800 glow-green' : 'border-red-800 glow-red'}`;
+        let secondary = [];
+        try { secondary = JSON.parse(s.secondary || '[]'); } catch(e) {}
+        const alsoLine = secondary.length ? `<div class="text-[10px] text-muted">also: ${secondary.join(', ')}</div>` : '';
+        document.getElementById('last-signal-content').innerHTML = `
+            <div class="flex items-center gap-2 mb-1">
+                <span class="text-base ${isLong ? 'text-profit' : 'text-loss'}">${isLong ? '&#9650;' : '&#9660;'}</span>
+                <span class="font-bold ${isLong ? 'text-profit' : 'text-loss'}">${isLong ? 'LONG' : 'SHORT'}</span>
+                <span class="text-[10px] bg-card px-1.5 py-0.5 rounded text-muted">${s.score?.toFixed(0)}/100</span>
+            </div>
+            <div class="mb-1">
+                <div class="text-[12px] font-semibold text-yellow-300">&#128367; ${s.pattern || '--'}</div>
+                ${alsoLine}
+                <div class="text-[10px] text-muted">${s.confirmation || ''}${s.price_action && s.price_action !== 'none' ? ' · ' + s.price_action.replace(/_/g,' ') : ''}</div>
+            </div>
+            <div class="font-mono text-[11px] space-y-0.5">
+                <div>Entry: $${s.entry?.toFixed(2)}</div>
+                <div class="text-loss">SL: $${s.sl?.toFixed(2)}</div>
+                <div class="text-profit">TP: $${s.tp3?.toFixed(2)}</div>
+            </div>
+        `;
+    }
+
+    // Detect new signals and fire alerts
+    if (signals && signals.signals) {
+        signals.signals.forEach(s => {
+            const sid = s.id || s.timestamp;
+            if (!sid) return;
+            if (knownSignalIds.has(sid)) return;
+            knownSignalIds.add(sid);
+            if (firstLoad) return;
+            if (!s.is_closed) {
+                const type = s.direction === 'long' ? 'buy' : 'sell';
+                const label = (s.direction === 'long' ? 'LONG' : 'SHORT') +
+                    ' 🕯 ' + (s.primary_pattern || 'Pattern') + (s.score ? ' (' + s.score + ')' : '');
+                showToast(type, label,
+                    (s.confirmation_type ? s.confirmation_type + '  ·  ' : '') +
+                    'Entry: $' + (s.entry_price?.toFixed(2) || '--') +
+                    '  SL: $' + (s.stop_loss?.toFixed(2) || '--') +
+                    '  TP: $' + (s.tp3?.toFixed(2) || '--'), 6000);
+            } else {
+                const pnlStr = s.pnl != null ? ((s.pnl >= 0 ? '+' : '') + s.pnl.toFixed(2)) : '--';
+                const label = s.is_winner ? 'TRADE WIN' : 'TRADE CLOSED';
+                showToast('exit', label,
+                    (s.direction?.toUpperCase() || '') + ' closed at $' + (s.exit_price?.toFixed(2) || '--') +
+                    '  PnL: ' + pnlStr + (s.exit_reason ? '  (' + s.exit_reason + ')' : ''), 5000);
+            }
+        });
+        firstLoad = false;
+    }
+
+    // Signal feed
+    if (signals && signals.signals) {
+        const feedEl = document.getElementById('signal-feed');
+        feedEl.innerHTML = signals.signals.map(s => {
+            const isLong = s.direction === 'long';
+            const time = s.timestamp ? new Date(s.timestamp).toLocaleTimeString() : '';
+            const pnlStr = s.pnl != null ? `<span class="${s.pnl >= 0 ? 'text-profit' : 'text-loss'} font-mono">${s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}</span>` : '';
+            const statusBadge = s.is_closed
+                ? `<span class="text-[9px] px-1 py-0.5 rounded ${s.is_winner ? 'bg-green-900/50 text-profit' : 'bg-red-900/50 text-loss'}">${s.is_winner ? 'WIN' : 'LOSS'}</span>`
+                : '<span class="text-[9px] px-1 py-0.5 rounded bg-blue-900/50 text-blue-400">OPEN</span>';
+            return `
+                <div class="py-1.5 border-b border-border/50 fade-in text-[11px]">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-1.5">
+                            <span class="${isLong ? 'text-profit' : 'text-loss'}">${isLong ? '&#9650;' : '&#9660;'}</span>
+                            <span class="text-muted">${time}</span>
+                            <span class="font-mono">$${s.entry_price?.toFixed(0)}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">${pnlStr} ${statusBadge}</div>
+                    </div>
+                    <div class="text-[10px] text-yellow-300/90 pl-4">&#128367; ${s.primary_pattern || '--'}${s.score ? ' · ' + Math.round(s.score) : ''}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Quick stats
+    if (analytics) {
+        document.getElementById('qs-total').textContent = analytics.total_signals || 0;
+        const wr = document.getElementById('qs-winrate');
+        wr.textContent = (analytics.win_rate || 0).toFixed(1) + '%';
+        wr.className = 'font-mono font-medium ' + (analytics.win_rate >= 50 ? 'text-profit' : 'text-loss');
+        const pnl = document.getElementById('qs-pnl');
+        pnl.textContent = '$' + (analytics.net_profit || 0).toFixed(2);
+        pnl.className = 'font-mono font-medium ' + (analytics.net_profit >= 0 ? 'text-profit' : 'text-loss');
+        document.getElementById('qs-pf').textContent = (analytics.profit_factor || 0).toFixed(2);
+        document.getElementById('qs-dd').textContent = '$' + (analytics.max_drawdown || 0).toFixed(2);
+        document.getElementById('qs-long').textContent = analytics.long_trades || 0;
+        document.getElementById('qs-short').textContent = analytics.short_trades || 0;
+        document.getElementById('qs-dur').textContent = (analytics.avg_duration_min || 0).toFixed(0) + 'm';
+    }
+
+    // Session info
+    const elapsed = Math.floor((Date.now() - startTime) / 60000);
+    document.getElementById('sess-uptime').textContent = elapsed < 60 ? elapsed + 'm' : Math.floor(elapsed/60) + 'h ' + (elapsed%60) + 'm';
+    document.getElementById('sess-update').textContent = new Date().toLocaleTimeString();
+}
+
+// ── Timeframe buttons ──
+document.querySelectorAll('.tf-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tf-btn').forEach(b => { b.classList.remove('bg-blue-600/80','text-white'); });
+        btn.classList.add('bg-blue-600/80','text-white');
+        currentTF = btn.dataset.tf;
+        loadAll();
+    });
+});
+
+// ── Toggle buttons ──
+function setupToggle(id, setter) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('click', () => {
+        const on = btn.dataset.active === 'true';
+        btn.dataset.active = !on;
+        btn.classList.toggle('bg-blue-600/60', !on);
+        setter(!on);
+        if (id === 'toggle-rsi') document.getElementById('rsi-wrapper').style.display = !on ? '' : 'none';
+        loadAll();
+    });
+}
+setupToggle('toggle-sma', v => showSMA = v);
+setupToggle('toggle-vol', v => showVol = v);
+setupToggle('toggle-rsi', v => showRSI = v);
+
+// ── Resize ──
+const ro = new ResizeObserver(() => {
+    chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
+    rsiChart.applyOptions({ width: rsiEl.clientWidth, height: rsiEl.clientHeight });
+});
+ro.observe(chartEl);
+ro.observe(rsiEl);
+
+// ── Refresh loop (interval driven by server config, min 3s) ──
+let refreshTimer = null;
+let refreshMs = 5000;
+function applyRefreshInterval(seconds) {
+    const ms = Math.max(3, Number(seconds) || 5) * 1000;
+    if (ms === refreshMs && refreshTimer) return;   // unchanged, keep timer
+    refreshMs = ms;
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(loadAll, refreshMs);
+}
+
+// ── Refresh countdown (updates the toolbar timer every 250ms) ──
+setInterval(() => {
+    const el = document.getElementById('refresh-countdown');
+    if (!el) return;
+    const rem = Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000));
+    el.textContent = rem + 's';
+}, 250);
+
+// ── Go ──
+loadAll();
+applyRefreshInterval(5);
+</script>
+{% endblock %}
