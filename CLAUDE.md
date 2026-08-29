@@ -78,6 +78,13 @@ action → confirmations → weighted score → breakout confirmation within
 SL / TP1 / TP2 / TP3, break-even after `breakeven_trigger_r`, optional ATR
 trailing, opposite-pattern reversal, optional max trade duration.
 
+**Exit timing.** Entries are decided once per closed bar, but exits must react
+to price the moment it is touched — so a dedicated **exit-monitor loop**
+(`_exit_monitor_loop`) polls the live price every `exit_poll_seconds`
+(default 5) and runs SL/TP checks independently of the bar-close signal loop.
+An `asyncio.Lock` serialises the two so a position is never double-closed.
+Without this, a stop could sit un-triggered for up to a full bar.
+
 ## 5. No look-ahead / no repaint
 
 * The DataFrame's **last row is the still-forming bar**; the last **closed** bar
