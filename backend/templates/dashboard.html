@@ -218,6 +218,16 @@ rsiChart.timeScale().subscribeVisibleLogicalRangeChange(r => { if(r) chart.timeS
 let tradeLines = [];
 function clearTradeLines() { tradeLines.forEach(l => { try{candleSeries.removePriceLine(l)}catch(e){} }); tradeLines = []; }
 
+// Human-friendly trade duration between two Date objects (entry -> exit).
+function fmtDuration(start, end) {
+    let sec = Math.max(0, Math.round((end - start) / 1000));
+    if (sec < 60) return sec + 's';
+    const m = Math.floor(sec / 60), s = sec % 60;
+    if (m < 60) return m + 'm' + (s ? ' ' + s + 's' : '');
+    const h = Math.floor(m / 60);
+    return h + 'h ' + (m % 60) + 'm';
+}
+
 let currentTF = '1m', showSMA = true, showVol = true, showRSI = true;
 let knownSignalIds = new Set();
 let firstLoad = true;
@@ -428,11 +438,19 @@ async function loadAll() {
         const feedEl = document.getElementById('signal-feed');
         feedEl.innerHTML = signals.signals.map(s => {
             const isLong = s.direction === 'long';
-            const time = s.timestamp ? new Date(s.timestamp).toLocaleTimeString() : '';
+            const entryT = s.entry_time || s.timestamp;
+            const time = entryT ? new Date(entryT).toLocaleTimeString() : '';
             const pnlStr = s.pnl != null ? `<span class="${s.pnl >= 0 ? 'text-profit' : 'text-loss'} font-mono">${s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}</span>` : '';
             const statusBadge = s.is_closed
                 ? `<span class="text-[9px] px-1 py-0.5 rounded ${s.is_winner ? 'bg-green-900/50 text-profit' : 'bg-red-900/50 text-loss'}">${s.is_winner ? 'WIN' : 'LOSS'}</span>`
                 : '<span class="text-[9px] px-1 py-0.5 rounded bg-blue-900/50 text-blue-400">OPEN</span>';
+            // Closed trades: show entry -> exit time and the trade duration.
+            let timeLine = '';
+            if (s.is_closed && s.exit_time) {
+                const exT = new Date(s.exit_time).toLocaleTimeString();
+                const dur = fmtDuration(new Date(entryT), new Date(s.exit_time));
+                timeLine = `<div class="text-[10px] text-muted pl-4">${time} &rarr; ${exT} <span class="text-slate-400">&middot; ${dur}</span></div>`;
+            }
             return `
                 <div class="py-1.5 border-b border-border/50 fade-in text-[11px]">
                     <div class="flex items-center justify-between">
@@ -444,6 +462,7 @@ async function loadAll() {
                         <div class="flex items-center gap-1.5">${pnlStr} ${statusBadge}</div>
                     </div>
                     <div class="text-[10px] text-yellow-300/90 pl-4">&#128367; ${s.primary_pattern || '--'}${s.score ? ' · ' + Math.round(s.score) : ''}</div>
+                    ${timeLine}
                 </div>
             `;
         }).join('');

@@ -357,6 +357,8 @@ def _signal_row(s: Signal) -> dict:
     return {
         "id": s.id,
         "timestamp": _iso_utc(s.timestamp),
+        "entry_time": _iso_utc(s.entry_time),
+        "exit_time": _iso_utc(s.exit_time),
         "direction": s.direction,
         "signal_type": s.signal_type,
         "entry_price": s.entry_price,
