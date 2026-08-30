@@ -192,6 +192,10 @@ class TradingEngine:
         await self._check_exits()
 
         if result.signal_type:
+            # Automation paused: keep managing exits on any open trade but do not
+            # open new positions (manual override / "stop automation").
+            if not self.config.get("strategy.auto_trade", True):
+                return
             if self._is_duplicate(result):
                 return
             if self.config.get("strategy.exit_on_reversal", True) and self._is_reversal(result):
@@ -383,6 +387,27 @@ class TradingEngine:
             change["reason"], change["old"], new_sl, price, sig.entry_price,
         )
         await self.notifier.send_message(msg)
+
+    async def close_open_positions(self, reason: str = "manual") -> int:
+        """Manually close every open position at the current market price.
+        Refreshes price first so the fill isn't stale. Returns count closed."""
+        try:
+            p = await self.feed.get_current_price()
+            if p and p > 0:
+                self._current_price = float(p)
+        except Exception:
+            pass
+        n = 0
+        async with self._exit_lock:
+            session = get_session(self.engine)
+            try:
+                for sig in session.query(Signal).filter(Signal.is_closed == False).all():
+                    await self._close_position(session, sig, reason)
+                    n += 1
+            finally:
+                session.close()
+        logger.info(f"Manual close: {n} position(s) closed ({reason})")
+        return n
 
     async def _close_opposite_positions(self, new_direction: str):
         session = get_session(self.engine)

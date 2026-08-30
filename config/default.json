@@ -6,6 +6,7 @@
   },
   "strategy": {
     "engine": "candlestick",
+    "auto_trade": true,
     "timeframe": "1m",
     "htf_timeframe": "15m",
 

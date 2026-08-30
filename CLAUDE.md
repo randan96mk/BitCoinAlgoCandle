@@ -152,6 +152,15 @@ Key blocks under `strategy`: `timeframe`, `min_signal_score`,
 `sl_buffer_atr_mult`, `tp1_r/tp2_r/tp3_r`, exit/break-even/trailing flags.
 Changing an `exchange.*` or `strategy.*` key from Settings hot-reloads the engine.
 
+### Manual controls (dashboard)
+* **Close Trade (Market)** — button in the Active Position card; closes all open
+  positions now at market (`POST /api/trade/close`, exit reason `manual`).
+* **Auto-trade ON/PAUSED** — toggle in the Session card (`strategy.auto_trade`,
+  `POST /api/trade/auto`). Paused stops new entries; exits on open trades keep
+  running.
+* **Reset to defaults** — button on the Settings page (`POST /api/config/reset`)
+  clears the whole `user.json` overlay and reloads.
+
 ## 9. UI / Telegram — "why did this trade enter?"
 
 * Chart markers: `LONG 🕯 <Pattern> <score>`.

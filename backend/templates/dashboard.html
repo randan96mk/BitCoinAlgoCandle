@@ -168,6 +168,8 @@
                 <div class="flex justify-between"><span class="text-muted">Uptime</span><span id="sess-uptime" class="font-mono">--</span></div>
                 <div class="flex justify-between"><span class="text-muted">Last Update</span><span id="sess-update" class="font-mono">--</span></div>
             </div>
+            <button id="auto-btn" data-on="true" onclick="toggleAuto()" class="w-full mt-2 text-[11px] px-2 py-1.5 rounded border border-green-700 text-profit bg-green-900/20 transition">Auto-trade: ON</button>
+            <div class="text-[9px] text-muted mt-1">Pause stops new entries; open trades still exit normally.</div>
         </div>
     </div>
 
@@ -218,6 +220,41 @@ rsiChart.timeScale().subscribeVisibleLogicalRangeChange(r => { if(r) chart.timeS
 let tradeLines = [];
 function clearTradeLines() { tradeLines.forEach(l => { try{candleSeries.removePriceLine(l)}catch(e){} }); tradeLines = []; }
 
+// Manual override controls
+async function manualClose() {
+    if (!confirm('Close ALL open positions at market now?')) return;
+    try {
+        const r = await fetch('/api/trade/close', { method: 'POST' });
+        const j = await r.json();
+        showToast('exit', 'Manual close',
+            (j.closed || 0) + ' position(s) closed' + (j.error ? ' — ' + j.error : ''), 4000);
+    } catch (e) { showToast('exit', 'Close failed', String(e), 4000); }
+    loadAll();
+}
+function applyAuto(on) {
+    const btn = document.getElementById('auto-btn');
+    if (!btn) return;
+    btn.dataset.on = on ? 'true' : 'false';
+    btn.textContent = on ? 'Auto-trade: ON' : 'Auto-trade: PAUSED';
+    btn.className = 'w-full mt-2 text-[11px] px-2 py-1.5 rounded border transition ' +
+        (on ? 'border-green-700 text-profit bg-green-900/20 hover:bg-green-900/40'
+            : 'border-amber-600 text-amber-400 bg-amber-900/20 hover:bg-amber-900/40');
+}
+async function toggleAuto() {
+    const btn = document.getElementById('auto-btn');
+    const turnOn = btn.dataset.on !== 'true';
+    try {
+        const r = await fetch('/api/trade/auto', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: turnOn }),
+        });
+        const j = await r.json();
+        applyAuto(j.auto_trade);
+        showToast(turnOn ? 'buy' : 'sell', 'Auto-trade ' + (turnOn ? 'ON' : 'PAUSED'),
+            turnOn ? 'New entries enabled' : 'New entries paused — exits still managed', 3500);
+    } catch (e) { showToast('sell', 'Toggle failed', String(e), 3500); }
+}
+
 // Human-friendly trade duration between two Date objects (entry -> exit).
 function fmtDuration(start, end) {
     let sec = Math.max(0, Math.round((end - start) / 1000));
@@ -261,6 +298,7 @@ async function loadAll() {
         document.getElementById('exchange-badge').textContent = exName;
         // Apply the configured refresh interval (clamped to a sane floor)
         if (status.refresh_interval) applyRefreshInterval(status.refresh_interval);
+        if (status.auto_trade !== undefined) applyAuto(status.auto_trade);
     }
 
     // Chart
@@ -373,6 +411,7 @@ async function loadAll() {
                 <div class="border-t border-border my-1 pt-1"></div>
                 <div class="flex justify-between"><span class="text-muted">R:R</span><span class="font-mono">1:${rr}</span></div>
                 <div class="flex justify-between"><span class="text-muted">Unrealized</span><span class="font-mono ${unrealized >= 0 ? 'text-profit' : 'text-loss'}">${unrealized >= 0 ? '+' : ''}${unrealized.toFixed(2)} (${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(2)}%)</span></div>
+                <button onclick="manualClose()" class="w-full mt-2 text-[11px] px-2 py-1.5 rounded border border-red-700 text-loss bg-red-900/20 hover:bg-red-900/40 transition font-semibold">&#10005; Close Trade (Market)</button>
             `;
         } else {
             atEl.innerHTML = '<div class="text-center text-muted py-4">No open position</div>';
