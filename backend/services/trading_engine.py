@@ -303,7 +303,10 @@ class TradingEngine:
                     # Break-even & trailing stop adjustments (persisted)
                     self._manage_stop(session, sig, price, use_be, be_r, use_trail, trail_mult)
 
-                    reason = self.strategy.check_exit(sig, price)
+                    # Trailing-stop-only mode: TP1/2/3 are display-only and do
+                    # not book profit — the position rides until the (trailing)
+                    # stop is hit. Other exits (reversal, max-duration) still apply.
+                    reason = self.strategy.check_exit(sig, price, honor_tp=not use_trail)
                     if not reason and max_min and sig.entry_time:
                         age = (utcnow_naive() - sig.entry_time).total_seconds() / 60
                         if age >= max_min:

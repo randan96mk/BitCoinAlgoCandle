@@ -141,6 +141,18 @@
                 <label class="flex items-center gap-2"><input type="checkbox" id="strategy.use_breakeven" class="rounded bg-card border-border"><span class="text-muted">Break-even stop</span></label>
                 <label class="flex items-center gap-2"><input type="checkbox" id="strategy.use_trailing" class="rounded bg-card border-border"><span class="text-muted">Trailing stop</span></label>
             </div>
+            <p class="text-[10px] text-muted mt-2">With <b>Trailing stop</b> on, TP1/2/3 are shown as reference levels but do <b>not</b> book profit — the trade rides until the trailing stop is hit (reversal &amp; max-duration exits still apply). Turn it off for fixed-target booking at TP1.</p>
+
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mt-4 mb-2">Marubozu Trigger (stricter conditions)</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.marubozu_trigger.enabled" class="rounded bg-card border-border"><span class="text-muted">Allow Marubozu to trigger</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.marubozu_trigger.require_volume" class="rounded bg-card border-border"><span class="text-muted">Require volume</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="strategy.marubozu_trigger.require_trend" class="rounded bg-card border-border"><span class="text-muted">Require trend</span></label>
+                <div></div>
+                <div><label class="block text-muted mb-1">Min Body Ratio</label><input type="number" step="0.01" min="0" max="1" id="strategy.marubozu_trigger.min_body_ratio" class="w-full bg-card border border-border rounded px-2.5 py-2" value="0.92"></div>
+                <div><label class="block text-muted mb-1">Volume Ratio (×avg)</label><input type="number" step="0.1" min="0" id="strategy.marubozu_trigger.volume_ratio" class="w-full bg-card border border-border rounded px-2.5 py-2" value="1.5"></div>
+                <div><label class="block text-muted mb-1">Min Score</label><input type="number" min="0" max="100" id="strategy.marubozu_trigger.min_score" class="w-full bg-card border border-border rounded px-2.5 py-2" value="80"></div>
+            </div>
         </div>
 
         <div class="flex items-center gap-3">
