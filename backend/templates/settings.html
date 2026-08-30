@@ -157,6 +157,7 @@
 
         <div class="flex items-center gap-3">
             <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded text-xs font-semibold transition">Save Configuration</button>
+            <button type="button" id="reset-btn" class="px-4 py-2 bg-card border border-border rounded text-xs hover:bg-surface transition">Reset to defaults</button>
             <span id="save-status" class="text-xs text-profit hidden">Saved!</span>
         </div>
     </form>
@@ -220,6 +221,20 @@ document.getElementById('tg-test-btn').onclick = async () => {
         st.className = 'text-xs text-loss';
         st.textContent = 'Request failed: ' + e;
     }
+};
+
+document.getElementById('reset-btn').onclick = async () => {
+    if (!confirm('Reset ALL settings to defaults? This clears your saved overrides (including Telegram credentials).')) return;
+    const st = document.getElementById('save-status');
+    st.className = 'text-xs text-muted'; st.textContent = 'Resetting…'; st.classList.remove('hidden');
+    try {
+        await fetch('/api/config/reset', { method: 'POST' });
+        await loadConfig();
+        st.className = 'text-xs text-profit'; st.textContent = 'Reset to defaults ✓';
+    } catch (e) {
+        st.className = 'text-xs text-loss'; st.textContent = 'Reset failed: ' + e;
+    }
+    setTimeout(() => st.classList.add('hidden'), 4000);
 };
 
 loadConfig();

@@ -44,6 +44,7 @@ async def get_status():
         "market_symbol": market_symbol,
         "timeframe": Config().get("strategy.timeframe"),
         "refresh_interval": Config().get("server.refresh_interval", 5),
+        "auto_trade": Config().get("strategy.auto_trade", True),
         "current_price": engine_instance.current_price if engine_instance else 0,
         "last_signal": _signal_to_dict(engine_instance.last_signal) if engine_instance and engine_instance.last_signal else None,
     }
@@ -254,6 +255,45 @@ async def update_config(data: dict):
     return {"status": "ok", "reloaded": reloaded, "needs_reload": needs_reload}
 
 
+@router.post("/config/reset")
+async def reset_config():
+    """Clear the user overlay so everything returns to default.json values."""
+    from backend.main import engine_instance
+    from backend.config import USER_CONFIG
+    if USER_CONFIG.exists():
+        USER_CONFIG.unlink()
+    Config().reload()
+    reloaded = False
+    if engine_instance:
+        try:
+            reloaded = await engine_instance.reload()
+        except Exception as e:
+            import logging
+            logging.getLogger("app").error(f"Reload after reset failed: {e}")
+    return {"status": "ok", "reloaded": reloaded}
+
+
+@router.post("/trade/close")
+async def close_trade():
+    """Manually close all open positions at market (override / stop automation)."""
+    from backend.main import engine_instance
+    if not engine_instance:
+        return {"closed": 0, "error": "engine not running"}
+    try:
+        n = await engine_instance.close_open_positions("manual")
+        return {"closed": n}
+    except Exception as e:
+        return {"closed": 0, "error": str(e)}
+
+
+@router.post("/trade/auto")
+async def set_auto_trade(data: dict):
+    """Pause/resume automated entries (exits on open trades keep running)."""
+    on = bool(data.get("enabled", True))
+    Config().set("strategy.auto_trade", on)
+    return {"auto_trade": on}
+
+
 @router.post("/telegram/test")
 async def telegram_test():
     """Send a test message with the currently-saved Telegram credentials and
@@ -357,6 +397,8 @@ def _signal_row(s: Signal) -> dict:
     return {
         "id": s.id,
         "timestamp": _iso_utc(s.timestamp),
+        "entry_time": _iso_utc(s.entry_time),
+        "exit_time": _iso_utc(s.exit_time),
         "direction": s.direction,
         "signal_type": s.signal_type,
         "entry_price": s.entry_price,

@@ -168,6 +168,8 @@
                 <div class="flex justify-between"><span class="text-muted">Uptime</span><span id="sess-uptime" class="font-mono">--</span></div>
                 <div class="flex justify-between"><span class="text-muted">Last Update</span><span id="sess-update" class="font-mono">--</span></div>
             </div>
+            <button id="auto-btn" data-on="true" onclick="toggleAuto()" class="w-full mt-2 text-[11px] px-2 py-1.5 rounded border border-green-700 text-profit bg-green-900/20 transition">Auto-trade: ON</button>
+            <div class="text-[9px] text-muted mt-1">Pause stops new entries; open trades still exit normally.</div>
         </div>
     </div>
 
@@ -218,6 +220,51 @@ rsiChart.timeScale().subscribeVisibleLogicalRangeChange(r => { if(r) chart.timeS
 let tradeLines = [];
 function clearTradeLines() { tradeLines.forEach(l => { try{candleSeries.removePriceLine(l)}catch(e){} }); tradeLines = []; }
 
+// Manual override controls
+async function manualClose() {
+    if (!confirm('Close ALL open positions at market now?')) return;
+    try {
+        const r = await fetch('/api/trade/close', { method: 'POST' });
+        const j = await r.json();
+        showToast('exit', 'Manual close',
+            (j.closed || 0) + ' position(s) closed' + (j.error ? ' — ' + j.error : ''), 4000);
+    } catch (e) { showToast('exit', 'Close failed', String(e), 4000); }
+    loadAll();
+}
+function applyAuto(on) {
+    const btn = document.getElementById('auto-btn');
+    if (!btn) return;
+    btn.dataset.on = on ? 'true' : 'false';
+    btn.textContent = on ? 'Auto-trade: ON' : 'Auto-trade: PAUSED';
+    btn.className = 'w-full mt-2 text-[11px] px-2 py-1.5 rounded border transition ' +
+        (on ? 'border-green-700 text-profit bg-green-900/20 hover:bg-green-900/40'
+            : 'border-amber-600 text-amber-400 bg-amber-900/20 hover:bg-amber-900/40');
+}
+async function toggleAuto() {
+    const btn = document.getElementById('auto-btn');
+    const turnOn = btn.dataset.on !== 'true';
+    try {
+        const r = await fetch('/api/trade/auto', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: turnOn }),
+        });
+        const j = await r.json();
+        applyAuto(j.auto_trade);
+        showToast(turnOn ? 'buy' : 'sell', 'Auto-trade ' + (turnOn ? 'ON' : 'PAUSED'),
+            turnOn ? 'New entries enabled' : 'New entries paused — exits still managed', 3500);
+    } catch (e) { showToast('sell', 'Toggle failed', String(e), 3500); }
+}
+
+// Human-friendly trade duration between two Date objects (entry -> exit).
+function fmtDuration(start, end) {
+    let sec = Math.max(0, Math.round((end - start) / 1000));
+    if (sec < 60) return sec + 's';
+    const m = Math.floor(sec / 60), s = sec % 60;
+    if (m < 60) return m + 'm' + (s ? ' ' + s + 's' : '');
+    const h = Math.floor(m / 60);
+    return h + 'h ' + (m % 60) + 'm';
+}
+
 let currentTF = '1m', showSMA = true, showVol = true, showRSI = true;
 let knownSignalIds = new Set();
 let firstLoad = true;
@@ -251,6 +298,7 @@ async function loadAll() {
         document.getElementById('exchange-badge').textContent = exName;
         // Apply the configured refresh interval (clamped to a sane floor)
         if (status.refresh_interval) applyRefreshInterval(status.refresh_interval);
+        if (status.auto_trade !== undefined) applyAuto(status.auto_trade);
     }
 
     // Chart
@@ -286,7 +334,9 @@ async function loadAll() {
                     }));
                 };
                 mkLine(tl.entry, '#3b82f6', 'ENTRY');
-                mkLine(tl.sl, '#ef4444', 'SL');
+                // Once the stop has moved past entry it's the trailing/BE stop.
+                const trailing = tl.sl != null && (tl.direction === 'long' ? tl.sl >= tl.entry : tl.sl <= tl.entry);
+                mkLine(tl.sl, trailing ? '#f59e0b' : '#ef4444', trailing ? 'TRAIL SL' : 'SL');
                 mkLine(tl.tp1, '#22c55e80', 'TP1');
                 mkLine(tl.tp2, '#22c55eB0', 'TP2');
                 mkLine(tl.tp3, '#22c55e', 'TP3');
@@ -361,6 +411,7 @@ async function loadAll() {
                 <div class="border-t border-border my-1 pt-1"></div>
                 <div class="flex justify-between"><span class="text-muted">R:R</span><span class="font-mono">1:${rr}</span></div>
                 <div class="flex justify-between"><span class="text-muted">Unrealized</span><span class="font-mono ${unrealized >= 0 ? 'text-profit' : 'text-loss'}">${unrealized >= 0 ? '+' : ''}${unrealized.toFixed(2)} (${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(2)}%)</span></div>
+                <button onclick="manualClose()" class="w-full mt-2 text-[11px] px-2 py-1.5 rounded border border-red-700 text-loss bg-red-900/20 hover:bg-red-900/40 transition font-semibold">&#10005; Close Trade (Market)</button>
             `;
         } else {
             atEl.innerHTML = '<div class="text-center text-muted py-4">No open position</div>';
@@ -428,11 +479,19 @@ async function loadAll() {
         const feedEl = document.getElementById('signal-feed');
         feedEl.innerHTML = signals.signals.map(s => {
             const isLong = s.direction === 'long';
-            const time = s.timestamp ? new Date(s.timestamp).toLocaleTimeString() : '';
+            const entryT = s.entry_time || s.timestamp;
+            const time = entryT ? new Date(entryT).toLocaleTimeString() : '';
             const pnlStr = s.pnl != null ? `<span class="${s.pnl >= 0 ? 'text-profit' : 'text-loss'} font-mono">${s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}</span>` : '';
             const statusBadge = s.is_closed
                 ? `<span class="text-[9px] px-1 py-0.5 rounded ${s.is_winner ? 'bg-green-900/50 text-profit' : 'bg-red-900/50 text-loss'}">${s.is_winner ? 'WIN' : 'LOSS'}</span>`
                 : '<span class="text-[9px] px-1 py-0.5 rounded bg-blue-900/50 text-blue-400">OPEN</span>';
+            // Closed trades: show entry -> exit time and the trade duration.
+            let timeLine = '';
+            if (s.is_closed && s.exit_time) {
+                const exT = new Date(s.exit_time).toLocaleTimeString();
+                const dur = fmtDuration(new Date(entryT), new Date(s.exit_time));
+                timeLine = `<div class="text-[10px] text-muted pl-4">${time} &rarr; ${exT} <span class="text-slate-400">&middot; ${dur}</span></div>`;
+            }
             return `
                 <div class="py-1.5 border-b border-border/50 fade-in text-[11px]">
                     <div class="flex items-center justify-between">
@@ -444,6 +503,7 @@ async function loadAll() {
                         <div class="flex items-center gap-1.5">${pnlStr} ${statusBadge}</div>
                     </div>
                     <div class="text-[10px] text-yellow-300/90 pl-4">&#128367; ${s.primary_pattern || '--'}${s.score ? ' · ' + Math.round(s.score) : ''}</div>
+                    ${timeLine}
                 </div>
             `;
         }).join('');

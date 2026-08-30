@@ -70,6 +70,9 @@ class TradingEngine:
         # loop can never both close the same position.
         self._exit_lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
+        # Last stop level we alerted per open trade, to throttle trailing-stop
+        # move notifications (id -> stop_loss).
+        self._alerted_stop: dict = {}
 
     @property
     def status(self) -> str:
@@ -189,6 +192,10 @@ class TradingEngine:
         await self._check_exits()
 
         if result.signal_type:
+            # Automation paused: keep managing exits on any open trade but do not
+            # open new positions (manual override / "stop automation").
+            if not self.config.get("strategy.auto_trade", True):
+                return
             if self._is_duplicate(result):
                 return
             if self.config.get("strategy.exit_on_reversal", True) and self._is_reversal(result):
@@ -264,6 +271,7 @@ class TradingEngine:
             session.close()
 
     async def _close_position(self, session, sig: Signal, exit_reason: str):
+        self._alerted_stop.pop(sig.id, None)
         now = utcnow_naive()
         sig.exit_price = self._current_price
         sig.exit_time = now
@@ -301,7 +309,10 @@ class TradingEngine:
             try:
                 for sig in session.query(Signal).filter(Signal.is_closed == False).all():
                     # Break-even & trailing stop adjustments (persisted)
-                    self._manage_stop(session, sig, price, use_be, be_r, use_trail, trail_mult)
+                    change = self._manage_stop(session, sig, price, use_be, be_r,
+                                               use_trail, trail_mult)
+                    if change:
+                        await self._maybe_alert_stop_move(sig, change, price)
 
                     # Trailing-stop-only mode: TP1/2/3 are display-only and do
                     # not book profit — the position rides until the (trailing)
@@ -317,37 +328,86 @@ class TradingEngine:
                 session.close()
 
     def _manage_stop(self, session, sig, price, use_be, be_r, use_trail, trail_mult):
-        """Move stop to break-even after `be_r` R, then optionally trail by ATR."""
+        """Move stop to break-even after `be_r` R, then optionally trail by ATR.
+
+        Returns {'reason', 'old', 'new'} describing the move (or None if the stop
+        did not change) so the caller can alert on it.
+        """
         if not sig.entry_price or not sig.take_profit_1:
-            return
+            return None
         # Initial risk recovered from TP1 geometry (tp1 = entry ± tp1_r*risk)
         tp1_r = self.config.get("strategy.tp1_r", 1.0) or 1.0
         risk = abs(sig.take_profit_1 - sig.entry_price) / tp1_r
         if risk <= 0:
-            return
-        changed = False
+            return None
+        old_sl = sig.stop_loss
+        reason = None
         if sig.direction == "long":
             move = price - sig.entry_price
             if use_be and move >= be_r * risk and sig.stop_loss < sig.entry_price:
                 sig.stop_loss = sig.entry_price
-                changed = True
+                reason = "break_even"
             if use_trail and self._current_atr > 0:
-                trail = price - trail_mult * self._current_atr
+                trail = round(price - trail_mult * self._current_atr, 2)
                 if trail > sig.stop_loss:
-                    sig.stop_loss = round(trail, 2)
-                    changed = True
+                    sig.stop_loss = trail
+                    reason = "trailing"
         else:
             move = sig.entry_price - price
             if use_be and move >= be_r * risk and sig.stop_loss > sig.entry_price:
                 sig.stop_loss = sig.entry_price
-                changed = True
+                reason = "break_even"
             if use_trail and self._current_atr > 0:
-                trail = price + trail_mult * self._current_atr
+                trail = round(price + trail_mult * self._current_atr, 2)
                 if trail < sig.stop_loss:
-                    sig.stop_loss = round(trail, 2)
-                    changed = True
-        if changed:
+                    sig.stop_loss = trail
+                    reason = "trailing"
+        if reason:
             session.commit()
+            return {"reason": reason, "old": old_sl, "new": sig.stop_loss}
+        return None
+
+    async def _maybe_alert_stop_move(self, sig, change, price):
+        """Alert (Telegram) when the stop moves — throttled so a trailing stop
+        doesn't spam on every tick."""
+        if not self.config.get("strategy.alert_on_stop_move", True):
+            return
+        new_sl = change["new"]
+        # Break-even is a one-time meaningful event → always alert it.
+        # Trailing → alert only once the stop has advanced at least
+        # trail_alert_min_atr × ATR beyond the last level we alerted.
+        last = self._alerted_stop.get(sig.id)
+        if change["reason"] == "trailing" and last is not None:
+            min_move = self.config.get("strategy.trail_alert_min_atr", 0.5) * (self._current_atr or 0)
+            if abs(new_sl - last) < max(min_move, 1e-9):
+                return
+        self._alerted_stop[sig.id] = new_sl
+        msg = self.notifier.format_stop_update(
+            sig.direction, sig.symbol, sig.primary_pattern,
+            change["reason"], change["old"], new_sl, price, sig.entry_price,
+        )
+        await self.notifier.send_message(msg)
+
+    async def close_open_positions(self, reason: str = "manual") -> int:
+        """Manually close every open position at the current market price.
+        Refreshes price first so the fill isn't stale. Returns count closed."""
+        try:
+            p = await self.feed.get_current_price()
+            if p and p > 0:
+                self._current_price = float(p)
+        except Exception:
+            pass
+        n = 0
+        async with self._exit_lock:
+            session = get_session(self.engine)
+            try:
+                for sig in session.query(Signal).filter(Signal.is_closed == False).all():
+                    await self._close_position(session, sig, reason)
+                    n += 1
+            finally:
+                session.close()
+        logger.info(f"Manual close: {n} position(s) closed ({reason})")
+        return n
 
     async def _close_opposite_positions(self, new_direction: str):
         session = get_session(self.engine)

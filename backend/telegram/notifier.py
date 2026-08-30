@@ -143,6 +143,23 @@ class TelegramNotifier:
             f"<b>Time:</b> {_timestamp_line()}"
         )
 
+    def format_stop_update(self, direction: str, symbol: str, pattern: str,
+                           reason: str, old_sl: float, new_sl: float,
+                           price: float, entry: float) -> str:
+        """Alert when the trailing / break-even stop moves."""
+        label = "Break-even stop" if reason == "break_even" else "Trailing stop"
+        emoji = "\U0001f512"  # 🔒
+        locked = new_sl - entry if direction == "long" else entry - new_sl
+        lock_line = (f"\n<b>Locked:</b> {locked:+.2f} (stop now "
+                     f"{'above' if locked >= 0 else 'below'} entry)")
+        return (
+            f"{emoji} <b>{label} moved</b> — {symbol}\n\n"
+            f"\U0001f56f <b>{pattern or 'Trade'}</b> ({direction.upper()})\n"
+            f"<b>SL:</b> {old_sl:.2f} → <b>{new_sl:.2f}</b>{lock_line}\n"
+            f"<b>Price:</b> {price:.2f}\n\n"
+            f"<b>Time:</b> {_timestamp_line()}"
+        )
+
     def format_exit_signal(self, direction: str, symbol: str,
                            entry: float, exit_price: float,
                            pnl: float, pnl_pct: float,
