@@ -103,6 +103,11 @@ stop is hit; reversal and max-duration exits still apply. Turn `use_trailing`
 off for classic fixed-target booking (the whole position closes at the first TP
 reached, normally TP1).
 
+When the stop moves (break-even snap or a trailing advance) the chart relabels
+the SL line **TRAIL SL** (amber) and a **Telegram alert** fires — throttled by
+`trail_alert_min_atr` (0.5 ATR) so a trailing stop doesn't spam on every tick;
+break-even is always alerted once. Disable via `alert_on_stop_move`.
+
 ### Marubozu trigger (`strategy.marubozu_trigger`)
 Marubozu is no longer benched — it can trigger a trade, but only as a genuine
 conviction thrust: clean body (`min_body_ratio` 0.92), volume ≥ `volume_ratio`×

@@ -296,7 +296,9 @@ async function loadAll() {
                     }));
                 };
                 mkLine(tl.entry, '#3b82f6', 'ENTRY');
-                mkLine(tl.sl, '#ef4444', 'SL');
+                // Once the stop has moved past entry it's the trailing/BE stop.
+                const trailing = tl.sl != null && (tl.direction === 'long' ? tl.sl >= tl.entry : tl.sl <= tl.entry);
+                mkLine(tl.sl, trailing ? '#f59e0b' : '#ef4444', trailing ? 'TRAIL SL' : 'SL');
                 mkLine(tl.tp1, '#22c55e80', 'TP1');
                 mkLine(tl.tp2, '#22c55eB0', 'TP2');
                 mkLine(tl.tp3, '#22c55e', 'TP3');

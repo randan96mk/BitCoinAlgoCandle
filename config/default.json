@@ -93,6 +93,8 @@
     "breakeven_trigger_r": 0.75,
     "use_trailing": true,
     "trailing_atr_mult": 1.5,
+    "alert_on_stop_move": true,
+    "trail_alert_min_atr": 0.5,
     "max_trade_minutes": 0
   },
   "risk": {
