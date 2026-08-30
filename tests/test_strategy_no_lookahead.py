@@ -125,6 +125,18 @@ def test_trailing_only_ignores_tp():
     assert s.check_exit(long, 99.0, honor_tp=False) == "stop_loss"
 
 
+def test_executed_entry_price_and_slippage():
+    """A fired signal records both the trigger level and the live executed price,
+    with slippage = executed - trigger (long)."""
+    df = _make_df().iloc[:118]
+    r = _mechanics_strategy().evaluate(df)
+    assert r.signal_type == "long"
+    assert r.entry_price > 0 and r.executed_entry_price > 0
+    # executed is the last (forming) bar close; slippage is signed adverse points
+    expected = round(df["close"].iloc[-1] - r.entry_price, 2)
+    assert abs(r.entry_slippage - expected) < 0.01
+
+
 def test_marubozu_strict_gate():
     from backend.strategy.candlestick_patterns import PatternMatch
     s = CandlestickStrategy()
