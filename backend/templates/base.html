@@ -57,15 +57,16 @@
 </head>
 <body class="text-gray-100 min-h-screen overflow-x-hidden">
     <!-- Top bar -->
-    <nav class="bg-surface border-b border-border px-4 py-2">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
+    <nav class="bg-surface border-b border-border px-3 sm:px-4 py-2">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2 min-w-0">
                 <span class="text-xl font-bold text-blue-400">&#8383;</span>
-                <span class="text-sm font-bold tracking-wide uppercase text-gray-300">BTC Futures Candlestick</span>
+                <span class="text-sm font-bold tracking-wide uppercase text-gray-300 hidden sm:inline">BTC Futures Candlestick</span>
+                <span class="text-sm font-bold tracking-wide uppercase text-gray-300 sm:hidden">BTC</span>
                 <span class="pulse-dot live" id="status-dot"></span>
-                <span id="engine-status-text" class="text-xs text-muted">connecting...</span>
+                <span id="engine-status-text" class="text-xs text-muted truncate">connecting...</span>
             </div>
-            <div class="flex items-center space-x-1 text-xs">
+            <div class="flex items-center gap-1 text-xs overflow-x-auto whitespace-nowrap -mx-1 px-1">
                 <a href="/" class="px-3 py-1.5 rounded hover:bg-card transition {% if active == 'dashboard' %}bg-card text-blue-400{% else %}text-gray-400{% endif %}">Terminal</a>
                 <a href="/signals" class="px-3 py-1.5 rounded hover:bg-card transition {% if active == 'signals' %}bg-card text-blue-400{% else %}text-gray-400{% endif %}">History</a>
                 <a href="/analytics" class="px-3 py-1.5 rounded hover:bg-card transition {% if active == 'analytics' %}bg-card text-blue-400{% else %}text-gray-400{% endif %}">Analytics</a>
