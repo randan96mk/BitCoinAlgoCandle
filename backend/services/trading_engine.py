@@ -240,6 +240,8 @@ class TradingEngine:
                 direction=result.signal_type,
                 signal_type="entry",
                 entry_price=result.entry_price,
+                executed_entry_price=result.executed_entry_price,
+                entry_slippage=result.entry_slippage,
                 stop_loss=result.stop_loss,
                 take_profit_1=result.tp1,
                 take_profit_2=result.tp2,
@@ -277,18 +279,21 @@ class TradingEngine:
         sig.exit_time = now
         sig.exit_reason = exit_reason
         sig.is_closed = True
+        # PnL is measured from the ACTUAL executed entry price (what the market
+        # was really at when the trade fired), not the theoretical trigger level.
+        base_entry = sig.executed_entry_price or sig.entry_price
         if sig.direction == "long":
-            sig.pnl = self._current_price - sig.entry_price
+            sig.pnl = self._current_price - base_entry
         else:
-            sig.pnl = sig.entry_price - self._current_price
-        sig.pnl_pct = (sig.pnl / sig.entry_price) * 100 if sig.entry_price else 0
+            sig.pnl = base_entry - self._current_price
+        sig.pnl_pct = (sig.pnl / base_entry) * 100 if base_entry else 0
         sig.is_winner = sig.pnl > 0
         if sig.entry_time:
             sig.duration_minutes = int((now - sig.entry_time).total_seconds() / 60)
         session.commit()
 
         msg = self.notifier.format_exit_signal(
-            sig.direction, sig.symbol, sig.entry_price,
+            sig.direction, sig.symbol, base_entry,
             self._current_price, sig.pnl, sig.pnl_pct, exit_reason,
         )
         await self.notifier.send_message(msg)
@@ -430,6 +435,7 @@ class TradingEngine:
             result.entry_price, result.stop_loss,
             result.tp1, result.tp2, result.tp3,
             result.indicator_confirmations,
+            result.executed_entry_price, result.entry_slippage,
         )
         await self.notifier.send_message(msg)
 

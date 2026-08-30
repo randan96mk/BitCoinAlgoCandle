@@ -3,10 +3,10 @@
 {% block title %}Terminal - BTC Futures Candlestick{% endblock %}
 {% block main_class %}p-1{% endblock %}
 {% block content %}
-<div class="grid grid-cols-12 gap-2" style="height:calc(100vh - 48px);overflow:hidden;">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-2 lg:h-[calc(100vh-56px)] lg:overflow-hidden">
 
     <!-- ═══ LEFT SIDEBAR: Ticker + Indicators + Trade Levels ═══ -->
-    <div class="col-span-2 flex flex-col gap-2 overflow-y-auto scrollbar-thin" style="max-height:calc(100vh - 48px);">
+    <div class="lg:col-span-2 flex flex-col gap-2 lg:overflow-y-auto scrollbar-thin lg:max-h-[calc(100vh-56px)]">
 
         <!-- Ticker -->
         <div class="bg-surface rounded-lg p-3 border border-border">
@@ -84,10 +84,10 @@
     </div>
 
     <!-- ═══ CENTER: Chart + RSI + Quick Stats ═══ -->
-    <div class="col-span-8 flex flex-col gap-2" style="max-height:calc(100vh - 48px);overflow:hidden;">
+    <div class="lg:col-span-8 flex flex-col gap-2 lg:max-h-[calc(100vh-56px)] lg:overflow-hidden">
 
         <!-- Chart toolbar -->
-        <div class="bg-surface rounded-lg px-3 py-1.5 border border-border flex items-center justify-between">
+        <div class="bg-surface rounded-lg px-3 py-1.5 border border-border flex items-center justify-between flex-wrap gap-y-2">
             <div class="flex items-center gap-1">
                 <div class="flex bg-card rounded text-[11px] border border-border">
                     <button data-tf="1m" class="tf-btn px-2.5 py-1 rounded-l hover:bg-gray-700 transition bg-blue-600/80 text-white">1m</button>
@@ -118,7 +118,7 @@
         </div>
 
         <!-- Main chart -->
-        <div class="bg-surface rounded-lg border border-border overflow-hidden flex-1" style="min-height:0;">
+        <div class="bg-surface rounded-lg border border-border overflow-hidden h-[52vh] lg:h-auto lg:flex-1" style="min-height:0;">
             <div id="chart-container" style="width:100%;height:100%;"></div>
         </div>
 
@@ -128,7 +128,7 @@
         </div>
 
         <!-- Quick stats bar -->
-        <div class="bg-surface rounded-lg px-3 py-2 border border-border flex items-center justify-between text-[11px]">
+        <div class="bg-surface rounded-lg px-3 py-2 border border-border flex items-center justify-between flex-wrap gap-y-2 text-[11px]">
             <div class="flex items-center gap-4">
                 <div><span class="text-muted">Signals</span> <span id="qs-total" class="font-mono font-medium">0</span></div>
                 <div><span class="text-muted">Win Rate</span> <span id="qs-winrate" class="font-mono font-medium text-profit">0%</span></div>
@@ -144,7 +144,7 @@
     </div>
 
     <!-- ═══ RIGHT SIDEBAR: Signals + Order Book Style ═══ -->
-    <div class="col-span-2 flex flex-col gap-2 overflow-y-auto scrollbar-thin" style="max-height:calc(100vh - 48px);">
+    <div class="lg:col-span-2 flex flex-col gap-2 lg:overflow-y-auto scrollbar-thin lg:max-h-[calc(100vh-56px)]">
 
         <!-- Last Signal Alert -->
         <div id="last-signal-card" class="bg-surface rounded-lg p-3 border border-border">
@@ -155,7 +155,7 @@
         <!-- Signal Feed -->
         <div class="bg-surface rounded-lg p-3 border border-border flex-1" style="min-height:0;">
             <div class="text-[10px] text-muted uppercase tracking-wider mb-2">Signal Feed</div>
-            <div id="signal-feed" class="space-y-1 overflow-y-auto scrollbar-thin" style="max-height:calc(100vh - 340px);">
+            <div id="signal-feed" class="space-y-1 overflow-y-auto scrollbar-thin max-h-[60vh] lg:max-h-[calc(100vh-340px)]">
             </div>
         </div>
 
@@ -333,7 +333,10 @@ async function loadAll() {
                         price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title
                     }));
                 };
-                mkLine(tl.entry, '#3b82f6', 'ENTRY');
+                mkLine(tl.entry, '#3b82f6', 'TRIGGER');
+                // Actual executed price (live at trigger) — distinct dashed line.
+                if (tl.executed && Math.abs(tl.executed - tl.entry) >= 0.01)
+                    mkLine(tl.executed, '#06b6d4', 'EXEC');
                 // Once the stop has moved past entry it's the trailing/BE stop.
                 const trailing = tl.sl != null && (tl.direction === 'long' ? tl.sl >= tl.entry : tl.sl <= tl.entry);
                 mkLine(tl.sl, trailing ? '#f59e0b' : '#ef4444', trailing ? 'TRAIL SL' : 'SL');
@@ -395,15 +398,18 @@ async function loadAll() {
         if (chartData.trade_levels && chartData.trade_levels.length > 0) {
             const tl = chartData.trade_levels[0];
             const isLong = tl.direction === 'long';
-            const unrealized = isLong ? (last.close - tl.entry) : (tl.entry - last.close);
-            const unrealizedPct = (unrealized / tl.entry * 100);
+            const baseEntry = tl.executed || tl.entry;
+            const unrealized = isLong ? (last.close - baseEntry) : (baseEntry - last.close);
+            const unrealizedPct = (unrealized / baseEntry * 100);
             const risk = Math.abs(tl.entry - tl.sl);
             const reward = Math.abs(tl.tp3 - tl.entry);
             const rr = risk > 0 ? (reward / risk).toFixed(1) : '--';
             atEl.innerHTML = `
                 <div class="flex justify-between"><span class="text-muted">Side</span><span class="font-bold ${isLong ? 'text-profit' : 'text-loss'}">${tl.direction.toUpperCase()}</span></div>
                 <div class="flex justify-between"><span class="text-muted">Pattern</span><span class="text-yellow-300 text-[11px]">&#128367; ${tl.pattern || '--'}</span></div>
-                <div class="flex justify-between"><span class="text-buy">Entry</span><span class="font-mono">$${tl.entry?.toFixed(2)}</span></div>
+                <div class="flex justify-between"><span class="text-muted">Trigger</span><span class="font-mono">$${tl.entry?.toFixed(2)}</span></div>
+                ${tl.executed ? `<div class="flex justify-between"><span class="text-buy">Executed</span><span class="font-mono text-cyan-300">$${tl.executed.toFixed(2)}</span></div>
+                <div class="flex justify-between"><span class="text-muted">Slippage</span><span class="font-mono ${tl.slippage > 0 ? 'text-loss' : 'text-profit'}">${tl.slippage >= 0 ? '+' : ''}${(tl.slippage ?? 0).toFixed(2)}</span></div>` : ''}
                 <div class="flex justify-between"><span class="text-loss">SL</span><span class="font-mono">$${tl.sl?.toFixed(2)}</span></div>
                 <div class="flex justify-between"><span class="text-profit">TP1</span><span class="font-mono">$${tl.tp1?.toFixed(2)}</span></div>
                 <div class="flex justify-between"><span class="text-profit">TP2</span><span class="font-mono">$${tl.tp2?.toFixed(2)}</span></div>
@@ -439,7 +445,8 @@ async function loadAll() {
                 <div class="text-[10px] text-muted">${s.confirmation || ''}${s.price_action && s.price_action !== 'none' ? ' · ' + s.price_action.replace(/_/g,' ') : ''}</div>
             </div>
             <div class="font-mono text-[11px] space-y-0.5">
-                <div>Entry: $${s.entry?.toFixed(2)}</div>
+                <div>Trigger: $${s.entry?.toFixed(2)}</div>
+                ${s.executed ? `<div class="text-cyan-300">Exec: $${s.executed.toFixed(2)} <span class="${s.slippage > 0 ? 'text-loss' : 'text-profit'}">(${s.slippage >= 0 ? '+' : ''}${(s.slippage ?? 0).toFixed(2)})</span></div>` : ''}
                 <div class="text-loss">SL: $${s.sl?.toFixed(2)}</div>
                 <div class="text-profit">TP: $${s.tp3?.toFixed(2)}</div>
             </div>

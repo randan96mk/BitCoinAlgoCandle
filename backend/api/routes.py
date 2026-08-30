@@ -205,7 +205,8 @@ async def get_chart_candles(timeframe: Optional[str] = Query(None), limit: int =
         trade_levels = []
         for s in session.query(Signal).filter(Signal.is_closed == False).all():
             trade_levels.append({
-                "entry": s.entry_price, "sl": s.stop_loss,
+                "entry": s.entry_price, "executed": s.executed_entry_price,
+                "slippage": s.entry_slippage, "sl": s.stop_loss,
                 "tp1": s.take_profit_1, "tp2": s.take_profit_2, "tp3": s.take_profit_3,
                 "direction": s.direction, "pattern": s.primary_pattern,
             })
@@ -379,6 +380,8 @@ def _signal_to_dict(sig) -> dict:
     return {
         "type": sig.signal_type,
         "entry": sig.entry_price,
+        "executed": sig.executed_entry_price,
+        "slippage": sig.entry_slippage,
         "sl": sig.stop_loss,
         "tp1": sig.tp1,
         "tp2": sig.tp2,
@@ -402,6 +405,8 @@ def _signal_row(s: Signal) -> dict:
         "direction": s.direction,
         "signal_type": s.signal_type,
         "entry_price": s.entry_price,
+        "executed_entry_price": s.executed_entry_price,
+        "entry_slippage": s.entry_slippage,
         "exit_price": s.exit_price,
         "stop_loss": s.stop_loss,
         "tp1": s.take_profit_1,

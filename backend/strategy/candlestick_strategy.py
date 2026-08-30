@@ -31,7 +31,9 @@ from backend.strategy.scorer import score_setup
 @dataclass
 class SignalResult:
     signal_type: Optional[str] = None  # "long" / "short" / None
-    entry_price: float = 0.0
+    entry_price: float = 0.0            # trigger level (pattern breakout / close)
+    executed_entry_price: float = 0.0   # live market price at the moment it fired
+    entry_slippage: float = 0.0         # adverse points: executed vs trigger (+ = worse)
     stop_loss: float = 0.0
     tp1: float = 0.0
     tp2: float = 0.0
@@ -237,6 +239,12 @@ class CandlestickStrategy:
 
         base.signal_type = direction
         base.entry_price = round(float(entry), 2)
+        # Actual market price at the moment the trade fired (latest/forming-bar
+        # price at evaluation time) vs the theoretical trigger level above.
+        executed = float(df["close"].iloc[-1])
+        base.executed_entry_price = round(executed, 2)
+        slip = (executed - entry) if direction == "long" else (entry - executed)
+        base.entry_slippage = round(float(slip), 2)  # + = worse fill than trigger
         base.stop_loss = round(float(sl), 2)
         base.tp1 = round(float(tp1), 2)
         base.tp2 = round(float(tp2), 2)

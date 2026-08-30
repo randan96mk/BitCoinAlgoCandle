@@ -136,6 +136,16 @@ Without this, a stop could sit un-triggered for up to a full bar.
 `CandlestickStrategy.evaluate(df, htf_df)` is the single decision function used
 live. Any offline replay must feed it the same closed-bar-only frames.
 
+### Entry price: trigger vs executed
+`entry_price` is the **trigger level** (the pattern breakout level, or the bar
+close) — the theoretical signal price used to derive SL/TP. `executed_entry_price`
+is the **actual market price at the moment the trade fired** (the live/forming-bar
+price at evaluation, a few seconds after the bar closed). `entry_slippage` =
+executed − trigger (long) is the adverse gap between the two. **PnL is measured
+from the executed price**, not the trigger, so results are realistic. The chart
+draws both a `TRIGGER` line and a cyan `EXEC` line; the active-trade panel,
+last-signal card, and Telegram entry alert show executed + slippage.
+
 ## 7. Database (`database/trading_candle.db`)
 
 `Signal` extends the reference schema with: `primary_pattern`,

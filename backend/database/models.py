@@ -27,7 +27,9 @@ class Signal(Base):
     direction = Column(String(10))  # long / short
     signal_type = Column(String(20))  # entry / exit / stop_loss / take_profit / reversal
 
-    entry_price = Column(Float)
+    entry_price = Column(Float)               # trigger level (pattern breakout/close)
+    executed_entry_price = Column(Float, nullable=True)  # live price at trigger
+    entry_slippage = Column(Float, nullable=True)        # adverse points vs trigger
     exit_price = Column(Float, nullable=True)
     stop_loss = Column(Float, nullable=True)
     take_profit_1 = Column(Float, nullable=True)
@@ -95,6 +97,8 @@ class AppLog(Base):
 
 # Columns added after the first release; auto-added to existing SQLite files.
 _MIGRATION_COLUMNS = {
+    "executed_entry_price": "FLOAT",
+    "entry_slippage": "FLOAT",
     "primary_pattern": "VARCHAR(40)",
     "secondary_patterns": "TEXT",
     "confirmation_type": "VARCHAR(30)",

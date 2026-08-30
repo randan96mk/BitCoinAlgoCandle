@@ -114,7 +114,8 @@ class TelegramNotifier:
                                     primary_pattern: str, secondary_patterns: list,
                                     confirmation: str, score: float,
                                     entry: float, sl: float, tp1: float, tp2: float,
-                                    tp3: float, confirms: dict) -> str:
+                                    tp3: float, confirms: dict,
+                                    executed: float = 0.0, slippage: float = 0.0) -> str:
         """Candlestick-led entry alert — leads with the pattern (the trade reason)."""
         emoji = "\U0001f7e2" if direction == "long" else "\U0001f534"
         dir_label = "LONG" if direction == "long" else "SHORT"
@@ -134,8 +135,9 @@ class TelegramNotifier:
             f"<b>Score:</b> {score:.0f}/100\n"
             f"<b>Confluence:</b> {conf_line}\n\n"
             f"<b>Pair:</b> {symbol} | <b>TF:</b> {timeframe}\n"
-            f"<b>Entry:</b> {entry:.2f}\n"
-            f"<b>Stop Loss:</b> {sl:.2f}\n"
+            f"<b>Entry (trigger):</b> {entry:.2f}\n"
+            + (f"<b>Executed:</b> {executed:.2f}  (slip {slippage:+.2f})\n" if executed else "")
+            + f"<b>Stop Loss:</b> {sl:.2f}\n"
             f"<b>TP1:</b> {tp1:.2f}\n"
             f"<b>TP2:</b> {tp2:.2f}\n"
             f"<b>TP3:</b> {tp3:.2f}\n\n"
