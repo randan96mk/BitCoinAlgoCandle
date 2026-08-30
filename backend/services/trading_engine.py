@@ -28,6 +28,15 @@ TIMEFRAME_SECONDS = {
     "30m": 1800, "1h": 3600, "4h": 14400,
 }
 
+# Only these carry enough authority to flip an open position (reversal exit).
+# A plain opposite Marubozu/Doji must NOT whipsaw us out of a good trade.
+REVERSAL_PATTERNS = {
+    "Bullish Engulfing", "Bearish Engulfing", "Morning Star", "Evening Star",
+    "Hammer", "Shooting Star", "Bullish Pin Bar", "Bearish Pin Bar",
+    "Three White Soldiers", "Three Black Crows",
+    "Strong Bullish Rejection", "Strong Bearish Rejection",
+}
+
 
 def utcnow_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -182,7 +191,7 @@ class TradingEngine:
         if result.signal_type:
             if self._is_duplicate(result):
                 return
-            if self.config.get("strategy.exit_on_reversal", True):
+            if self.config.get("strategy.exit_on_reversal", True) and self._is_reversal(result):
                 await self._close_opposite_positions(result.signal_type)
             self._last_setup_id = result.setup_id
             self._last_signal_bar = to_naive_utc(result.timestamp)
@@ -191,6 +200,13 @@ class TradingEngine:
             await self._send_alert(result)
             logger.info(f"Signal: {result.signal_type} {result.primary_pattern} "
                         f"@ {result.entry_price} score={result.signal_score}")
+
+    def _is_reversal(self, result: SignalResult) -> bool:
+        """A fresh signal may flip an open position only if it is a real reversal
+        pattern with enough conviction — prevents opposite-Marubozu whipsaws."""
+        min_score = self.config.get("strategy.reversal_min_score", 65)
+        return (result.primary_pattern in REVERSAL_PATTERNS
+                and result.signal_score >= min_score)
 
     def _is_duplicate(self, result: SignalResult) -> bool:
         # Same setup already alerted

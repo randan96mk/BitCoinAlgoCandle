@@ -34,9 +34,22 @@ def _make_df():
     return pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
 
 
+def _mechanics_strategy():
+    """Strategy with the discretionary quality filters relaxed, so these tests
+    exercise pattern detection + entry mechanics rather than the tuned filters."""
+    s = CandlestickStrategy()
+    s.excluded_triggers = set()      # allow any pattern to trigger
+    s.max_entry_ext_atr = 0          # disable anti-chase filter
+    s.entry_bias = "any"             # disable pullback/breakout location filter
+    s.min_score = 0                  # don't gate on score here
+    for k in s._enabled:
+        s._enabled[k] = False        # ignore indicator confirmations
+    return s
+
+
 def test_long_setup_names_pattern():
     df = _make_df().iloc[:118]  # forming bar = 117, last closed = 116 (breakout bar)
-    r = CandlestickStrategy().evaluate(df)
+    r = _mechanics_strategy().evaluate(df)
     assert r.signal_type == "long", r.signal_type
     assert r.primary_pattern, "signal must name a candlestick pattern"
     assert r.entry_price > 0 and r.stop_loss < r.entry_price < r.tp1 < r.tp3
@@ -65,10 +78,37 @@ def test_no_lookahead_replay_matches():
 def test_signal_only_on_closed_bars():
     """The forming bar (index -1) must never be the pattern/confirmation bar."""
     df = _make_df().iloc[:118]
-    r = CandlestickStrategy().evaluate(df)
+    r = _mechanics_strategy().evaluate(df)
     if r.signal_type and r.timestamp is not None:
         # The signal's timestamp is the last CLOSED bar, not the forming one.
         assert r.timestamp <= df["timestamp"].iloc[-2]
+
+
+def test_entry_bias_pullback_filter():
+    """Pullback mode: dip-in-uptrend passes; extended breakout-into-air fails."""
+    from backend.strategy.candlestick_patterns import PatternMatch
+    from backend.strategy.price_action import PriceActionContext
+
+    s = CandlestickStrategy()
+    s.entry_bias = "pullback"
+    s.pullback_ema_atr = 0.75
+    atr, ema_fast, ema_slow = 40.0, 30000.0, 29900.0  # uptrend (fast > slow)
+
+    def pm(low, high):
+        return PatternMatch("Hammer", "long", 0.8, 0.7, 0.6, high, low, low, high, low, high)
+
+    # LONG at support -> pass
+    ctx = PriceActionContext(at_support=True)
+    assert s._entry_bias_ok("long", pm(29980, 30010), ctx, atr, ema_fast, ema_slow)
+    # LONG pulled back to the fast EMA (low within band) -> pass
+    ctx = PriceActionContext()
+    assert s._entry_bias_ok("long", pm(30010, 30040), ctx, atr, ema_fast, ema_slow)
+    # LONG extended far above the EMA, not at support -> fail (no chasing)
+    ctx = PriceActionContext()
+    assert not s._entry_bias_ok("long", pm(30200, 30240), ctx, atr, ema_fast, ema_slow)
+    # LONG but trend is down (fast < slow) -> fail
+    ctx = PriceActionContext(at_support=True)
+    assert not s._entry_bias_ok("long", pm(29980, 30010), ctx, atr, 29800.0, 29900.0)
 
 
 if __name__ == "__main__":
