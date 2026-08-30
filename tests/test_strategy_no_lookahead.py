@@ -111,6 +111,38 @@ def test_entry_bias_pullback_filter():
     assert not s._entry_bias_ok("long", pm(29980, 30010), ctx, atr, 29800.0, 29900.0)
 
 
+def test_trailing_only_ignores_tp():
+    """honor_tp=False: TPs don't book; only the (trailing) stop closes the trade."""
+    from types import SimpleNamespace
+    s = CandlestickStrategy()
+    long = SimpleNamespace(direction="long", stop_loss=100.0,
+                           take_profit_1=105.0, take_profit_2=110.0, take_profit_3=115.0)
+    # Price well above TP3 but honor_tp False -> no exit (rides on)
+    assert s.check_exit(long, 120.0, honor_tp=False) is None
+    # Same price with honor_tp True -> books at a take-profit
+    assert s.check_exit(long, 120.0, honor_tp=True) == "take_profit_3"
+    # Stop still closes it in trailing-only mode
+    assert s.check_exit(long, 99.0, honor_tp=False) == "stop_loss"
+
+
+def test_marubozu_strict_gate():
+    from backend.strategy.candlestick_patterns import PatternMatch
+    s = CandlestickStrategy()
+    s.mar = {"enabled": True, "min_body_ratio": 0.92, "require_volume": True,
+             "volume_ratio": 1.5, "require_trend": True, "min_score": 80}
+    vol = pd.Series([100, 100, 300])       # pattern bar volume = 300
+    vsma = pd.Series([100, 100, 150])      # avg = 150 -> 300 >= 1.5*150 -> ok
+    clean = PatternMatch("Marubozu", "long", 0.95, 0.95, 0.0, 110, 100, 100, 110, 100, 109.5)
+    # all conditions pass
+    assert s._marubozu_ok(clean, {"ema": True}, 85, vol, vsma, 2)
+    # trend fails
+    assert not s._marubozu_ok(clean, {"ema": False}, 85, vol, vsma, 2)
+    # score too low
+    assert not s._marubozu_ok(clean, {"ema": True}, 78, vol, vsma, 2)
+    # volume too low
+    assert not s._marubozu_ok(clean, {"ema": True}, 85, pd.Series([1, 1, 100]), vsma, 2)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

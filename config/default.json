@@ -14,10 +14,18 @@
     "confirmation_window": 3,
     "cooldown_bars": 8,
     "exit_poll_seconds": 5,
-    "excluded_trigger_patterns": ["Marubozu", "Doji", "Inside Bar"],
+    "excluded_trigger_patterns": ["Doji", "Inside Bar"],
     "max_entry_ext_atr": 1.5,
     "entry_bias": "pullback",
     "pullback_ema_atr": 0.75,
+    "marubozu_trigger": {
+      "enabled": true,
+      "min_body_ratio": 0.92,
+      "require_volume": true,
+      "volume_ratio": 1.5,
+      "require_trend": true,
+      "min_score": 80
+    },
 
     "candle": {
       "doji_body_ratio": 0.1,
@@ -83,7 +91,7 @@
     "reversal_min_score": 72,
     "use_breakeven": true,
     "breakeven_trigger_r": 0.75,
-    "use_trailing": false,
+    "use_trailing": true,
     "trailing_atr_mult": 1.5,
     "max_trade_minutes": 0
   },

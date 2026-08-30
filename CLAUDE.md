@@ -96,6 +96,20 @@ action → confirmations → weighted score → breakout confirmation within
 SL / TP1 / TP2 / TP3, break-even after `breakeven_trigger_r`, optional ATR
 trailing, opposite-pattern reversal, optional max trade duration.
 
+**Trailing-stop-only mode.** `use_trailing` is **on by default**. While on, TP1/2/3
+are still computed and displayed everywhere but do **not** book profit
+(`check_exit(honor_tp=False)`): the position rides until the trailing/break-even
+stop is hit; reversal and max-duration exits still apply. Turn `use_trailing`
+off for classic fixed-target booking (the whole position closes at the first TP
+reached, normally TP1).
+
+### Marubozu trigger (`strategy.marubozu_trigger`)
+Marubozu is no longer benched — it can trigger a trade, but only as a genuine
+conviction thrust: clean body (`min_body_ratio` 0.92), volume ≥ `volume_ratio`×
+the 20-bar average, trend-aligned (EMA), and score ≥ `min_score` (80). It is also
+demoted in ranking so it only becomes the primary when no other pattern is
+present. Everything is toggleable; disable via `marubozu_trigger.enabled`.
+
 **Exit timing.** Entries are decided once per closed bar, but exits must react
 to price the moment it is touched — so a dedicated **exit-monitor loop**
 (`_exit_monitor_loop`) polls the live price every `exit_poll_seconds`

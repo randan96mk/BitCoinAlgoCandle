@@ -118,6 +118,9 @@ class CandlestickStrategy:
         # How close the pattern must have pulled back to the fast EMA to count as
         # a dip (in ATRs). Larger = looser.
         self.pullback_ema_atr = cfg.get("strategy.pullback_ema_atr", 0.75)
+        # Marubozu can trigger again, but only under stricter conditions (clean
+        # body + volume conviction + trend alignment + higher score).
+        self.mar = cfg.get("strategy.marubozu_trigger", {}) or {}
 
     # ── public API ────────────────────────────────────────────────────────────
     def evaluate(self, df: pd.DataFrame, htf_df: Optional[pd.DataFrame] = None) -> SignalResult:
@@ -221,6 +224,14 @@ class CandlestickStrategy:
         # Fill result context (always) then gate on score
         base.signal_score = score
         base.score_breakdown = breakdown
+
+        # Strict Marubozu gate — a Marubozu may trigger only as a genuine
+        # conviction thrust: clean body, volume behind it, trend-aligned, and a
+        # higher score bar than other patterns.
+        if primary.name == "Marubozu" and self.mar.get("enabled", True):
+            if not self._marubozu_ok(primary, confirms, score, vol, vol_sma_s, pat_idx):
+                return base
+
         if score < self.min_score:
             return base  # context only, no trade
 
@@ -245,27 +256,52 @@ class CandlestickStrategy:
         base.pattern_close = round(float(primary.candle_close), 2)
         return base
 
-    def check_exit(self, signal, current_price: float) -> Optional[str]:
-        """SL/TP exit check for an open position (reused from the reference design)."""
+    def check_exit(self, signal, current_price: float, honor_tp: bool = True) -> Optional[str]:
+        """SL/TP exit check for an open position.
+
+        When `honor_tp` is False (trailing-stop-only mode), TP1/2/3 do NOT close
+        the trade — they remain as display-only reference levels and the position
+        rides until the (trailing) stop is hit. The stop check always applies.
+        """
         if signal.direction == "long":
             if current_price <= signal.stop_loss:
                 return "stop_loss"
-            if signal.take_profit_3 and current_price >= signal.take_profit_3:
-                return "take_profit_3"
-            if signal.take_profit_2 and current_price >= signal.take_profit_2:
-                return "take_profit_2"
-            if signal.take_profit_1 and current_price >= signal.take_profit_1:
-                return "take_profit_1"
+            if honor_tp:
+                if signal.take_profit_3 and current_price >= signal.take_profit_3:
+                    return "take_profit_3"
+                if signal.take_profit_2 and current_price >= signal.take_profit_2:
+                    return "take_profit_2"
+                if signal.take_profit_1 and current_price >= signal.take_profit_1:
+                    return "take_profit_1"
         elif signal.direction == "short":
             if current_price >= signal.stop_loss:
                 return "stop_loss"
-            if signal.take_profit_3 and current_price <= signal.take_profit_3:
-                return "take_profit_3"
-            if signal.take_profit_2 and current_price <= signal.take_profit_2:
-                return "take_profit_2"
-            if signal.take_profit_1 and current_price <= signal.take_profit_1:
-                return "take_profit_1"
+            if honor_tp:
+                if signal.take_profit_3 and current_price <= signal.take_profit_3:
+                    return "take_profit_3"
+                if signal.take_profit_2 and current_price <= signal.take_profit_2:
+                    return "take_profit_2"
+                if signal.take_profit_1 and current_price <= signal.take_profit_1:
+                    return "take_profit_1"
         return None
+
+    def _marubozu_ok(self, primary, confirms, score, vol, vol_sma_s, pat_idx) -> bool:
+        """Stricter gate for a Marubozu trigger (see strategy.marubozu_trigger)."""
+        rng = primary.candle_high - primary.candle_low
+        body = abs(primary.candle_close - primary.candle_open)
+        body_ratio = body / rng if rng > 0 else 0.0
+        if body_ratio < self.mar.get("min_body_ratio", 0.92):
+            return False
+        if self.mar.get("require_trend", True) and not confirms.get("ema", False):
+            return False
+        if self.mar.get("require_volume", True):
+            v = _safe(vol.iloc[pat_idx], 0.0)
+            va = _safe(vol_sma_s.iloc[pat_idx], 0.0)
+            if not (va > 0 and v >= self.mar.get("volume_ratio", 1.5) * va):
+                return False
+        if score < self.mar.get("min_score", 80):
+            return False
+        return True
 
     # ── internals ─────────────────────────────────────────────────────────────
     def _find_confirmed_setup(self, candles, t, atr_s, htf_bull_ok, htf_bear_ok):
@@ -286,10 +322,14 @@ class CandlestickStrategy:
                 continue
             directional.sort(key=lambda m: m.strength * 0.6 + m.quality * 0.4, reverse=True)
             # Primary must be a pattern allowed to trigger; excluded ones (e.g.
-            # Marubozu) can still ride along as secondary context.
+            # Doji) can still ride along as secondary context. Marubozu is
+            # demoted so it becomes primary only when no other pattern is present
+            # (and even then it must pass its stricter gate in evaluate()).
             allowed = [m for m in directional if m.name not in self.excluded_triggers]
             if not allowed:
                 continue
+            allowed.sort(key=lambda m: (m.name == "Marubozu",
+                                        -(m.strength * 0.6 + m.quality * 0.4)))
             primary = allowed[0]
             secondaries = [m for m in directional if m is not primary
                            and m.direction == primary.direction]
