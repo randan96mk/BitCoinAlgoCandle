@@ -187,7 +187,10 @@ const darkTheme = {
     layout: { background: { color: '#1a2332' }, textColor: '#64748b', fontSize: 11 },
     grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal, vertLine: { color: '#3b82f6', width: 1, style: 3, labelBackgroundColor: '#1e40af' }, horzLine: { color: '#3b82f6', width: 1, style: 3, labelBackgroundColor: '#1e40af' } },
-    rightPriceScale: { borderColor: '#2d3a4a', scaleMargins: { top: 0.05, bottom: 0.15 } },
+    // Pin a fixed price-axis width so the main chart (8-digit prices) and the
+    // RSI sub-chart (2-digit values) share the same gutter and their time axes
+    // line up vertically.
+    rightPriceScale: { borderColor: '#2d3a4a', scaleMargins: { top: 0.05, bottom: 0.15 }, minimumWidth: 76 },
     timeScale: { borderColor: '#2d3a4a', timeVisible: true, secondsVisible: false },
 };
 
