@@ -1,0 +1,371 @@
+//@version=6
+// =============================================================================
+// BTC Futures Candlestick Strategy — signal indicator
+// TradingView port of the BitCoinAlgoCandle engine (candlestick-first).
+//
+// The candlestick pattern is the PRIMARY trade reason; EMA / RSI / ADX / volume /
+// higher-timeframe trend are optional, weighted confirmations. Entry bias
+// (pullback / breakout / any), a confluence score with a minimum threshold, and
+// structural stops with R-multiple targets mirror the Python app.
+//
+// Apply it to a 1m / 3m / 5m BTC futures chart — the signal timeframe is just the
+// chart's timeframe. Signals fire on CLOSED bars (no repaint): breakout
+// confirmation fires on the bar that first breaks the pattern's extreme.
+// =============================================================================
+indicator("BTC Futures Candlestick Strategy", "BTC Candle", overlay = true, max_labels_count = 500)
+
+// ── General ──────────────────────────────────────────────────────────────────
+gG        = "General"
+minScore  = input.int(72, "Min signal score", minval = 0, maxval = 100, group = gG)
+confMode  = input.string("breakout", "Confirmation mode", options = ["breakout", "close"], group = gG)
+confWin   = input.int(3, "Confirmation window (bars)", minval = 1, group = gG)
+cooldown  = input.int(8, "Cooldown bars", minval = 0, group = gG)
+entryBias = input.string("pullback", "Entry bias", options = ["pullback", "breakout", "any"], group = gG)
+allowMaru = input.bool(false, "Allow Marubozu to trigger (strict)", group = gG)
+
+// ── Confirmations ────────────────────────────────────────────────────────────
+gC         = "Confirmations"
+useEMA     = input.bool(true, "EMA trend", group = gC)
+useRSI     = input.bool(true, "RSI", group = gC)
+useADX     = input.bool(true, "ADX strength", group = gC)
+useVol     = input.bool(true, "Volume", group = gC)
+useHTF     = input.bool(true, "Higher-timeframe trend", group = gC)
+emaFastLen = input.int(21, "EMA fast", minval = 1, group = gC)
+emaSlowLen = input.int(50, "EMA slow", minval = 1, group = gC)
+rsiLen     = input.int(14, "RSI length", minval = 1, group = gC)
+rsiBull    = input.int(45, "RSI bull min", group = gC)
+rsiBear    = input.int(55, "RSI bear max", group = gC)
+adxLen     = input.int(14, "ADX length", minval = 1, group = gC)
+adxMin     = input.float(20, "ADX min", group = gC)
+volLen     = input.int(20, "Volume avg length", minval = 1, group = gC)
+volRatio   = input.float(1.2, "Volume ratio", group = gC)
+htfTF      = input.timeframe("15", "HTF timeframe", group = gC)
+pullAtr    = input.float(0.75, "Pullback EMA distance (ATR)", group = gC)
+maxExtAtr  = input.float(1.5, "Max entry extension (ATR, 0=off)", group = gC)
+
+// ── Risk ─────────────────────────────────────────────────────────────────────
+gR       = "Risk"
+atrLen   = input.int(14, "ATR length", minval = 1, group = gR)
+slBufAtr = input.float(0.25, "SL buffer (ATR)", group = gR)
+tp1R     = input.float(1.0, "TP1 (R)", group = gR)
+tp2R     = input.float(2.0, "TP2 (R)", group = gR)
+tp3R     = input.float(3.0, "TP3 (R)", group = gR)
+
+// ── Candle thresholds ────────────────────────────────────────────────────────
+gT        = "Candle thresholds"
+maruBody  = input.float(0.90, "Marubozu body ratio", group = gT)
+longBody  = input.float(0.60, "Long body ratio", group = gT)
+smallBody = input.float(0.33, "Small body ratio", group = gT)
+pinWB     = input.float(2.0, "Pin wick / body", group = gT)
+hamWB     = input.float(2.0, "Hammer wick / body", group = gT)
+rejWick   = input.float(0.50, "Rejection wick ratio", group = gT)
+oppWickMx = input.float(0.30, "Opposite wick max (ratio)", group = gT)
+
+// ── Indicators (all global, computed every bar) ──────────────────────────────
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+rsiVal  = ta.rsi(close, rsiLen)
+atrVal  = ta.atr(atrLen)
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+volAvg  = ta.sma(volume, volLen)
+hh20    = ta.highest(high, 20)[1]
+ll20    = ta.lowest(low, 20)[1]
+
+htfSlow  = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaSlowLen), lookahead = barmerge.lookahead_off)
+htfClose = request.security(syminfo.tickerid, htfTF, close, lookahead = barmerge.lookahead_off)
+htfUp    = htfClose > htfSlow
+htfDn    = htfClose < htfSlow
+
+phv = ta.pivothigh(high, 5, 5)
+plv = ta.pivotlow(low, 5, 5)
+var float lastPH = na
+var float lastPL = na
+lastPH := not na(phv) ? phv : lastPH
+lastPL := not na(plv) ? plv : lastPL
+
+// ── Candle anatomy ───────────────────────────────────────────────────────────
+body     = math.abs(close - open)
+rng      = high - low
+upWick   = high - math.max(open, close)
+loWick   = math.min(open, close) - low
+bodyR    = rng > 0 ? body / rng : 0.0
+upR      = rng > 0 ? upWick / rng : 0.0
+loR      = rng > 0 ? loWick / rng : 0.0
+closePos = rng > 0 ? (close - low) / rng : 0.5
+wbUp     = body > 0 ? upWick / body : 999.0
+wbLo     = body > 0 ? loWick / body : 999.0
+isBull   = close > open
+isBear   = close < open
+
+pBull = close[1] > open[1]
+pBear = close[1] < open[1]
+pBody = math.abs(close[1] - open[1])
+r1    = (high[1] - low[1]) > 0 ? pBody / (high[1] - low[1]) : 0.0
+r2    = (high[2] - low[2]) > 0 ? math.abs(close[2] - open[2]) / (high[2] - low[2]) : 0.0
+downTrend = close[1] < close[5]
+
+// ── Pattern detection (strongest wins) ───────────────────────────────────────
+patName = ""
+patDir  = 0
+patStr  = 0.0
+patHigh = high
+patLow  = low
+
+// Harami (0.55)
+if pBear and isBull and open > close[1] and close < open[1] and bodyR <= longBody and r1 >= longBody and 0.55 > patStr
+    patName := "Bullish Harami"
+    patDir  := 1
+    patStr  := 0.55
+    patHigh := math.max(high, high[1])
+    patLow  := math.min(low, low[1])
+if pBull and isBear and open < close[1] and close > open[1] and bodyR <= longBody and r1 >= longBody and 0.55 > patStr
+    patName := "Bearish Harami"
+    patDir  := -1
+    patStr  := 0.55
+    patHigh := math.max(high, high[1])
+    patLow  := math.min(low, low[1])
+
+// Strong rejection (0.60)
+if isBull and loR >= rejWick and closePos >= 0.6 and 0.60 > patStr
+    patName := "Strong Bullish Rejection"
+    patDir  := 1
+    patStr  := 0.60
+    patHigh := high
+    patLow  := low
+if isBear and upR >= rejWick and closePos <= 0.4 and 0.60 > patStr
+    patName := "Strong Bearish Rejection"
+    patDir  := -1
+    patStr  := 0.60
+    patHigh := high
+    patLow  := low
+
+// Pin bars (0.63)
+if wbLo >= pinWB and loR >= rejWick and closePos >= 0.5 and 0.63 > patStr
+    patName := "Bullish Pin Bar"
+    patDir  := 1
+    patStr  := 0.63
+    patHigh := high
+    patLow  := low
+if wbUp >= pinWB and upR >= rejWick and closePos <= 0.5 and 0.63 > patStr
+    patName := "Bearish Pin Bar"
+    patDir  := -1
+    patStr  := 0.63
+    patHigh := high
+    patLow  := low
+
+// Hammer / Inverted Hammer / Shooting Star (0.66)
+if wbLo >= hamWB and upR <= oppWickMx and bodyR <= longBody and 0.66 > patStr
+    patName := "Hammer"
+    patDir  := 1
+    patStr  := 0.66
+    patHigh := high
+    patLow  := low
+if wbUp >= hamWB and loR <= oppWickMx and bodyR <= longBody and 0.66 > patStr
+    patName := downTrend ? "Inverted Hammer" : "Shooting Star"
+    patDir  := downTrend ? 1 : -1
+    patStr  := 0.66
+    patHigh := high
+    patLow  := low
+
+// Engulfing (0.72)
+if pBear and isBull and close >= open[1] and open <= close[1] and body >= pBody and 0.72 > patStr
+    patName := "Bullish Engulfing"
+    patDir  := 1
+    patStr  := 0.72
+    patHigh := math.max(high, high[1])
+    patLow  := math.min(low, low[1])
+if pBull and isBear and open >= close[1] and close <= open[1] and body >= pBody and 0.72 > patStr
+    patName := "Bearish Engulfing"
+    patDir  := -1
+    patStr  := 0.72
+    patHigh := math.max(high, high[1])
+    patLow  := math.min(low, low[1])
+
+// Morning / Evening Star (0.75)
+midA = (open[2] + close[2]) / 2
+if close[2] < open[2] and r2 >= longBody and r1 <= smallBody and isBull and close > midA and 0.75 > patStr
+    patName := "Morning Star"
+    patDir  := 1
+    patStr  := 0.75
+    patHigh := math.max(high, math.max(high[1], high[2]))
+    patLow  := math.min(low, math.min(low[1], low[2]))
+if close[2] > open[2] and r2 >= longBody and r1 <= smallBody and isBear and close < midA and 0.75 > patStr
+    patName := "Evening Star"
+    patDir  := -1
+    patStr  := 0.75
+    patHigh := math.max(high, math.max(high[1], high[2]))
+    patLow  := math.min(low, math.min(low[1], low[2]))
+
+// Three White Soldiers / Black Crows (0.78)
+if isBull and isBull[1] and isBull[2] and close > close[1] and close[1] > close[2] and open > open[1] and open[1] > open[2] and bodyR >= smallBody and r1 >= smallBody and r2 >= smallBody and 0.78 > patStr
+    patName := "Three White Soldiers"
+    patDir  := 1
+    patStr  := 0.78
+    patHigh := math.max(high, math.max(high[1], high[2]))
+    patLow  := math.min(low, math.min(low[1], low[2]))
+if isBear and isBear[1] and isBear[2] and close < close[1] and close[1] < close[2] and open < open[1] and open[1] < open[2] and bodyR >= smallBody and r1 >= smallBody and r2 >= smallBody and 0.78 > patStr
+    patName := "Three Black Crows"
+    patDir  := -1
+    patStr  := 0.78
+    patHigh := math.max(high, math.max(high[1], high[2]))
+    patLow  := math.min(low, math.min(low[1], low[2]))
+
+// Marubozu (optional, strict: clean body + volume + trend) (0.70)
+if allowMaru and bodyR >= maruBody and 0.70 > patStr
+    okVol = not useVol or (not na(volAvg) and volume >= volRatio * volAvg)
+    okTrd = isBull ? emaFast > emaSlow : emaFast < emaSlow
+    if okVol and okTrd
+        patName := isBull ? "Marubozu (Bull)" : "Marubozu (Bear)"
+        patDir  := isBull ? 1 : -1
+        patStr  := 0.70
+        patHigh := high
+        patLow  := low
+
+// ── Context / confirmations ──────────────────────────────────────────────────
+zone      = 0.5 * atrVal
+atSupport = not na(lastPL) and math.abs(low - lastPL) <= zone
+atResist  = not na(lastPH) and math.abs(high - lastPH) <= zone
+paDir     = patDir == 1 ? (atSupport ? 0.6 : 0.0) : patDir == -1 ? (atResist ? 0.6 : 0.0) : 0.0
+
+emaOk = patDir == 1 ? (emaFast > emaSlow and close > emaSlow) : patDir == -1 ? (emaFast < emaSlow and close < emaSlow) : false
+rsiOk = patDir == 1 ? rsiVal >= rsiBull : patDir == -1 ? rsiVal <= rsiBear : false
+adxOk = adxVal >= adxMin
+volOk = not na(volAvg) and volume >= volRatio * volAvg
+htfOk = not useHTF ? true : patDir == 1 ? htfUp : patDir == -1 ? htfDn : false
+
+biasOk = true
+if entryBias == "pullback"
+    biasOk := patDir == 1 ? (emaFast > emaSlow and (atSupport or low <= emaFast + pullAtr * atrVal)) : patDir == -1 ? (emaFast < emaSlow and (atResist or high >= emaFast - pullAtr * atrVal)) : false
+else if entryBias == "breakout"
+    biasOk := patDir == 1 ? close > hh20 : patDir == -1 ? close < ll20 : false
+
+extOk = true
+if maxExtAtr > 0 and atrVal > 0
+    ext = patDir == 1 ? close - emaSlow : emaSlow - close
+    extOk := ext <= maxExtAtr * atrVal
+
+// ── Confluence score (disabled confirmations drop out of the denominator) ─────
+wPS  = 40.0
+wQ   = 10.0
+wPA  = 10.0
+wEMA = 10.0
+wRSI = 5.0
+wADX = 5.0
+wVOL = 5.0
+wBRK = 10.0
+wRR  = 5.0
+brkTerm = confMode == "breakout"
+earned  = wPS * patStr + wQ * bodyR + wPA * paDir + (brkTerm ? wBRK : 0.0) + wRR * math.min(1.0, tp3R / 3.0)
+maxp    = wPS + wQ + wPA + wBRK + wRR
+if useEMA
+    maxp := maxp + wEMA
+    earned := earned + (emaOk ? wEMA : 0.0)
+if useRSI
+    maxp := maxp + wRSI
+    earned := earned + (rsiOk ? wRSI : 0.0)
+if useADX
+    maxp := maxp + wADX
+    earned := earned + (adxOk ? wADX : 0.0)
+if useVol
+    maxp := maxp + wVOL
+    earned := earned + (volOk ? wVOL : 0.0)
+score = maxp > 0 ? earned / maxp * 100.0 : 0.0
+
+// ── Gating ───────────────────────────────────────────────────────────────────
+var int lastSigBar = na
+cooldownOk = na(lastSigBar) or (bar_index - lastSigBar) >= cooldown
+pass      = patDir != 0 and score >= minScore and biasOk and extOk and htfOk and cooldownOk
+passLong  = pass and patDir == 1
+passShort = pass and patDir == -1
+
+// ── Fire logic (close = on pattern bar; breakout = first bar past the extreme) ─
+var float  aLongLvl  = na
+var float  aLongLow  = na
+var string aLongPat  = na
+var int    aLongBar  = na
+var float  aShortLvl = na
+var float  aShortHigh= na
+var string aShortPat = na
+var int    aShortBar = na
+
+longFire  = false
+shortFire = false
+fName     = ""
+fLow      = float(na)
+fHigh     = float(na)
+
+if confMode == "close"
+    if passLong
+        longFire := true
+        fName    := patName
+        fLow     := patLow
+    if passShort
+        shortFire := true
+        fName     := patName
+        fHigh     := patHigh
+else
+    if passLong
+        aLongLvl := patHigh
+        aLongLow := patLow
+        aLongPat := patName
+        aLongBar := bar_index
+    if passShort
+        aShortLvl  := patLow
+        aShortHigh := patHigh
+        aShortPat  := patName
+        aShortBar  := bar_index
+    if not na(aLongLvl) and (bar_index - aLongBar) >= 1
+        if high > aLongLvl and (bar_index - aLongBar) <= confWin
+            longFire := true
+            fName    := aLongPat
+            fLow     := aLongLow
+            aLongLvl := na
+        else if (bar_index - aLongBar) > confWin
+            aLongLvl := na
+    if not na(aShortLvl) and (bar_index - aShortBar) >= 1
+        if low < aShortLvl and (bar_index - aShortBar) <= confWin
+            shortFire  := true
+            fName      := aShortPat
+            fHigh      := aShortHigh
+            aShortLvl  := na
+        else if (bar_index - aShortBar) > confWin
+            aShortLvl := na
+
+if longFire and shortFire
+    shortFire := false
+
+// ── Levels + drawing + alerts ────────────────────────────────────────────────
+f_levels(bool isLong, float structLow, float structHigh) =>
+    exq  = close
+    slv  = isLong ? structLow - slBufAtr * atrVal : structHigh + slBufAtr * atrVal
+    rk   = isLong ? exq - slv : slv - exq
+    rk   := rk <= 0 ? atrVal : rk
+    t1   = isLong ? exq + tp1R * rk : exq - tp1R * rk
+    t2   = isLong ? exq + tp2R * rk : exq - tp2R * rk
+    t3   = isLong ? exq + tp3R * rk : exq - tp3R * rk
+    [exq, slv, t1, t2, t3]
+
+if longFire or shortFire
+    lastSigBar := bar_index
+
+if longFire
+    [en, sl, t1, t2, t3] = f_levels(true, fLow, na)
+    txt = "LONG ▲  " + fName + "\nScore " + str.tostring(math.round(score)) + "/100\nEntry " + str.tostring(en, format.mintick) + "\nSL " + str.tostring(sl, format.mintick) + "\nTP1 " + str.tostring(t1, format.mintick) + "  TP3 " + str.tostring(t3, format.mintick)
+    label.new(bar_index, low, txt, yloc = yloc.belowbar, style = label.style_label_up, color = color.new(color.green, 0), textcolor = color.white, size = size.small)
+    alert(txt, alert.freq_once_per_bar_close)
+
+if shortFire
+    [en2, sl2, t12, t22, t32] = f_levels(false, na, fHigh)
+    txt2 = "SHORT ▼  " + fName + "\nScore " + str.tostring(math.round(score)) + "/100\nEntry " + str.tostring(en2, format.mintick) + "\nSL " + str.tostring(sl2, format.mintick) + "\nTP1 " + str.tostring(t12, format.mintick) + "  TP3 " + str.tostring(t32, format.mintick)
+    label.new(bar_index, high, txt2, yloc = yloc.abovebar, style = label.style_label_down, color = color.new(color.red, 0), textcolor = color.white, size = size.small)
+    alert(txt2, alert.freq_once_per_bar_close)
+
+plotshape(longFire, title = "Long", style = shape.triangleup, location = location.belowbar, color = color.new(color.green, 0), size = size.tiny)
+plotshape(shortFire, title = "Short", style = shape.triangledown, location = location.abovebar, color = color.new(color.red, 0), size = size.tiny)
+
+alertcondition(longFire, "BTC Candle — LONG", "BTC Candle LONG signal")
+alertcondition(shortFire, "BTC Candle — SHORT", "BTC Candle SHORT signal")
+
+// ── Context plots ────────────────────────────────────────────────────────────
+plot(emaFast, "EMA fast", color = color.new(color.orange, 0), linewidth = 1)
+plot(emaSlow, "EMA slow", color = color.new(color.purple, 0), linewidth = 1)
