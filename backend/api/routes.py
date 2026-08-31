@@ -348,11 +348,12 @@ def _pattern_stats(name: str, rows: list) -> dict:
 
 
 def _r_multiple(s: Signal):
-    """Realised R = pnl / initial risk (entry vs pattern-based stop)."""
-    if not s.entry_price or s.take_profit_1 is None:
+    """Realised R = pnl / initial risk (executed entry vs pattern-based stop)."""
+    base_entry = s.executed_entry_price or s.entry_price
+    if not base_entry or s.take_profit_1 is None:
         return None
     tp1_r = Config().get("strategy.tp1_r", 1.0) or 1.0
-    risk = abs(s.take_profit_1 - s.entry_price) / tp1_r
+    risk = abs(s.take_profit_1 - base_entry) / tp1_r
     if risk <= 0:
         return None
     return (s.pnl or 0) / risk

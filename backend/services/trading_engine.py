@@ -340,17 +340,20 @@ class TradingEngine:
         """
         if not sig.entry_price or not sig.take_profit_1:
             return None
-        # Initial risk recovered from TP1 geometry (tp1 = entry ± tp1_r*risk)
+        # Break-even and R are measured from the ACTUAL executed fill so a
+        # break-even stop is truly flat on the real entry, not the trigger level.
+        base_entry = sig.executed_entry_price or sig.entry_price
+        # Initial risk recovered from TP1 geometry (tp1 = executed ± tp1_r*risk)
         tp1_r = self.config.get("strategy.tp1_r", 1.0) or 1.0
-        risk = abs(sig.take_profit_1 - sig.entry_price) / tp1_r
+        risk = abs(sig.take_profit_1 - base_entry) / tp1_r
         if risk <= 0:
             return None
         old_sl = sig.stop_loss
         reason = None
         if sig.direction == "long":
-            move = price - sig.entry_price
-            if use_be and move >= be_r * risk and sig.stop_loss < sig.entry_price:
-                sig.stop_loss = sig.entry_price
+            move = price - base_entry
+            if use_be and move >= be_r * risk and sig.stop_loss < base_entry:
+                sig.stop_loss = base_entry
                 reason = "break_even"
             if use_trail and self._current_atr > 0:
                 trail = round(price - trail_mult * self._current_atr, 2)
@@ -358,9 +361,9 @@ class TradingEngine:
                     sig.stop_loss = trail
                     reason = "trailing"
         else:
-            move = sig.entry_price - price
-            if use_be and move >= be_r * risk and sig.stop_loss > sig.entry_price:
-                sig.stop_loss = sig.entry_price
+            move = base_entry - price
+            if use_be and move >= be_r * risk and sig.stop_loss > base_entry:
+                sig.stop_loss = base_entry
                 reason = "break_even"
             if use_trail and self._current_atr > 0:
                 trail = round(price + trail_mult * self._current_atr, 2)
