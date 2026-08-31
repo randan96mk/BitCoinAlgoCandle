@@ -1,6 +1,6 @@
 //@version=6
 // =============================================================================
-// BTC Futures Candlestick Strategy — signal indicator
+// BTC Futures Candlestick Strategy — backtestable strategy
 // TradingView port of the BitCoinAlgoCandle engine (candlestick-first).
 //
 // The candlestick pattern is the PRIMARY trade reason; EMA / RSI / ADX / volume /
@@ -8,11 +8,19 @@
 // (pullback / breakout / any), a confluence score with a minimum threshold, and
 // structural stops with R-multiple targets mirror the Python app.
 //
+// This is a strategy() — it places simulated LONG/SHORT trades so the Strategy
+// Tester marks exactly WHEN the stop was hit and WHEN each target was achieved.
+// Two exit modes (see Risk inputs):
+//   • Trailing-stop-only (default) — TP1/2/3 are drawn but not booked; the trade
+//     rides on a break-even + ATR trailing stop, mirroring the live app.
+//   • Fixed targets — the position is split across TP1/TP2/TP3, each paired with
+//     the structural stop, so partial target fills and the stop both show up.
+//
 // Apply it to a 1m / 3m / 5m BTC futures chart — the signal timeframe is just the
 // chart's timeframe. Signals fire on CLOSED bars (no repaint): breakout
 // confirmation fires on the bar that first breaks the pattern's extreme.
 // =============================================================================
-indicator("BTC Futures Candlestick Strategy", "BTC Candle", overlay = true, max_labels_count = 500)
+strategy("BTC Futures Candlestick Strategy", "BTC Candle", overlay = true, max_labels_count = 500, pyramiding = 0, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, initial_capital = 10000, commission_type = strategy.commission.percent, commission_value = 0.05, process_orders_on_close = true)
 
 // ── General ──────────────────────────────────────────────────────────────────
 gG        = "General"
@@ -50,6 +58,9 @@ slBufAtr = input.float(0.25, "SL buffer (ATR)", group = gR)
 tp1R     = input.float(1.0, "TP1 (R)", group = gR)
 tp2R     = input.float(2.0, "TP2 (R)", group = gR)
 tp3R     = input.float(3.0, "TP3 (R)", group = gR)
+useTrail = input.bool(true, "Trailing-stop only (ride to BE/trail; TP1-3 shown, not booked)", group = gR)
+beR      = input.float(0.75, "Break-even trigger (R)", group = gR)
+trailAtr = input.float(1.5, "Trailing stop distance (ATR)", group = gR)
 
 // ── Candle thresholds ────────────────────────────────────────────────────────
 gT        = "Candle thresholds"
@@ -334,7 +345,7 @@ else
 if longFire and shortFire
     shortFire := false
 
-// ── Levels + drawing + alerts ────────────────────────────────────────────────
+// ── Levels ───────────────────────────────────────────────────────────────────
 f_levels(bool isLong, float structLow, float structHigh) =>
     exq  = close
     slv  = isLong ? structLow - slBufAtr * atrVal : structHigh + slBufAtr * atrVal
@@ -343,22 +354,94 @@ f_levels(bool isLong, float structLow, float structHigh) =>
     t1   = isLong ? exq + tp1R * rk : exq - tp1R * rk
     t2   = isLong ? exq + tp2R * rk : exq - tp2R * rk
     t3   = isLong ? exq + tp3R * rk : exq - tp3R * rk
-    [exq, slv, t1, t2, t3]
+    [exq, slv, rk, t1, t2, t3]
+
+// ── Position state (drives strategy exits + level drawing) ───────────────────
+var int   posDir   = 0
+var float posEntry = na
+var float posSL    = na
+var float posRisk  = na
+var float posT1    = na
+var float posT2    = na
+var float posT3    = na
+var float trailSL  = na
+var bool  beDone   = false
 
 if longFire or shortFire
     lastSigBar := bar_index
 
+// ── Entries ──────────────────────────────────────────────────────────────────
 if longFire
-    [en, sl, t1, t2, t3] = f_levels(true, fLow, na)
+    [en, sl, rk, t1, t2, t3] = f_levels(true, fLow, na)
+    strategy.entry("Long", strategy.long)
+    posDir   := 1
+    posEntry := en
+    posSL    := sl
+    posRisk  := rk
+    posT1    := t1
+    posT2    := t2
+    posT3    := t3
+    trailSL  := sl
+    beDone   := false
     txt = "LONG ▲  " + fName + "\nScore " + str.tostring(math.round(score)) + "/100\nEntry " + str.tostring(en, format.mintick) + "\nSL " + str.tostring(sl, format.mintick) + "\nTP1 " + str.tostring(t1, format.mintick) + "  TP3 " + str.tostring(t3, format.mintick)
     label.new(bar_index, low, txt, yloc = yloc.belowbar, style = label.style_label_up, color = color.new(color.green, 0), textcolor = color.white, size = size.small)
     alert(txt, alert.freq_once_per_bar_close)
 
 if shortFire
-    [en2, sl2, t12, t22, t32] = f_levels(false, na, fHigh)
+    [en2, sl2, rk2, t12, t22, t32] = f_levels(false, na, fHigh)
+    strategy.entry("Short", strategy.short)
+    posDir   := -1
+    posEntry := en2
+    posSL    := sl2
+    posRisk  := rk2
+    posT1    := t12
+    posT2    := t22
+    posT3    := t32
+    trailSL  := sl2
+    beDone   := false
     txt2 = "SHORT ▼  " + fName + "\nScore " + str.tostring(math.round(score)) + "/100\nEntry " + str.tostring(en2, format.mintick) + "\nSL " + str.tostring(sl2, format.mintick) + "\nTP1 " + str.tostring(t12, format.mintick) + "  TP3 " + str.tostring(t32, format.mintick)
     label.new(bar_index, high, txt2, yloc = yloc.abovebar, style = label.style_label_down, color = color.new(color.red, 0), textcolor = color.white, size = size.small)
     alert(txt2, alert.freq_once_per_bar_close)
+
+// ── Exit management ──────────────────────────────────────────────────────────
+// Trailing-stop-only: TP1/2/3 still drawn but not booked — the trade rides on a
+// break-even + ATR trailing stop (mirrors the live app's use_trailing default).
+// Fixed-target mode: split the position across TP1/TP2/TP3, each paired with the
+// structural stop, so the tester shows partial target fills AND the stop fill.
+if posDir != 0 and strategy.position_size != 0
+    if useTrail
+        if not beDone
+            if posDir == 1 and high >= posEntry + beR * posRisk
+                trailSL := math.max(trailSL, posEntry)
+                beDone  := true
+            if posDir == -1 and low <= posEntry - beR * posRisk
+                trailSL := math.min(trailSL, posEntry)
+                beDone  := true
+        if posDir == 1
+            trailSL := math.max(trailSL, close - trailAtr * atrVal)
+            strategy.exit("Long Stop", "Long", stop = trailSL)
+        else
+            trailSL := math.min(trailSL, close + trailAtr * atrVal)
+            strategy.exit("Short Stop", "Short", stop = trailSL)
+    else
+        if posDir == 1
+            strategy.exit("Long TP1", "Long", stop = posSL, limit = posT1, qty_percent = 33)
+            strategy.exit("Long TP2", "Long", stop = posSL, limit = posT2, qty_percent = 50)
+            strategy.exit("Long TP3", "Long", stop = posSL, limit = posT3)
+        else
+            strategy.exit("Short TP1", "Short", stop = posSL, limit = posT1, qty_percent = 33)
+            strategy.exit("Short TP2", "Short", stop = posSL, limit = posT2, qty_percent = 50)
+            strategy.exit("Short TP3", "Short", stop = posSL, limit = posT3)
+
+if strategy.position_size == 0
+    posDir := 0
+
+// ── Drawing + alerts ─────────────────────────────────────────────────────────
+inPos = posDir != 0 and strategy.position_size != 0
+plot(inPos ? (useTrail ? trailSL : posSL) : na, "Stop", color = color.new(color.red, 0), linewidth = 1, style = plot.style_linebr)
+plot(inPos ? posT1 : na, "TP1", color = color.new(color.teal, 0), linewidth = 1, style = plot.style_linebr)
+plot(inPos ? posT2 : na, "TP2", color = color.new(color.teal, 40), linewidth = 1, style = plot.style_linebr)
+plot(inPos ? posT3 : na, "TP3", color = color.new(color.teal, 60), linewidth = 1, style = plot.style_linebr)
 
 plotshape(longFire, title = "Long", style = shape.triangleup, location = location.belowbar, color = color.new(color.green, 0), size = size.tiny)
 plotshape(shortFire, title = "Short", style = shape.triangledown, location = location.abovebar, color = color.new(color.red, 0), size = size.tiny)
