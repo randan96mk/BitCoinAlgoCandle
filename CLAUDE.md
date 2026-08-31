@@ -141,8 +141,11 @@ live. Any offline replay must feed it the same closed-bar-only frames.
 close) — the theoretical signal price used to derive SL/TP. `executed_entry_price`
 is the **actual market price at the moment the trade fired** (the live/forming-bar
 price at evaluation, a few seconds after the bar closed). `entry_slippage` =
-executed − trigger (long) is the adverse gap between the two. **PnL is measured
-from the executed price**, not the trigger, so results are realistic. The chart
+executed − trigger (long) is the adverse gap between the two. **PnL, the risk/R
+used to size TP1/2/3, and the break-even stop are all measured from the executed
+price**, not the trigger, so results and break-even are true to the real fill.
+(The initial stop stays structural — pattern low/high + ATR buffer — and the
+trailing stop is price/ATR based, independent of entry.) The chart
 draws both a `TRIGGER` line and a cyan `EXEC` line; the active-trade panel,
 last-signal card, and Telegram entry alert show executed + slippage.
 

@@ -164,24 +164,28 @@ class CandlestickStrategy:
         primary, secondaries, entry, confirmed, pat_idx = setup
         direction = primary.direction
 
-        # SL from pattern structure; TP by R-multiples of risk
+        # Actual fill (live/forming-bar price at evaluation). SL is structural
+        # (pattern low/high + buffer) but RISK and the TP targets are measured
+        # from the EXECUTED price so R-multiples reflect the real entry, and
+        # break-even (engine) can snap the stop to the true fill.
+        executed = float(df["close"].iloc[-1])
         buf = self.sl_buf_mult * cur_atr
         if direction == "long":
             sl = primary.pattern_low - buf
-            risk = entry - sl
+            risk = executed - sl
             if self.max_loss_points and risk > self.max_loss_points:
-                sl = entry - self.max_loss_points
+                sl = executed - self.max_loss_points
                 risk = self.max_loss_points
-            tp1, tp2, tp3 = (entry + self.tp1_r * risk, entry + self.tp2_r * risk,
-                             entry + self.tp3_r * risk)
+            tp1, tp2, tp3 = (executed + self.tp1_r * risk, executed + self.tp2_r * risk,
+                             executed + self.tp3_r * risk)
         else:
             sl = primary.pattern_high + buf
-            risk = sl - entry
+            risk = sl - executed
             if self.max_loss_points and risk > self.max_loss_points:
-                sl = entry + self.max_loss_points
+                sl = executed + self.max_loss_points
                 risk = self.max_loss_points
-            tp1, tp2, tp3 = (entry - self.tp1_r * risk, entry - self.tp2_r * risk,
-                             entry - self.tp3_r * risk)
+            tp1, tp2, tp3 = (executed - self.tp1_r * risk, executed - self.tp2_r * risk,
+                             executed - self.tp3_r * risk)
 
         if risk <= 0:
             return base
@@ -238,11 +242,8 @@ class CandlestickStrategy:
             return base  # context only, no trade
 
         base.signal_type = direction
-        base.entry_price = round(float(entry), 2)
-        # Actual market price at the moment the trade fired (latest/forming-bar
-        # price at evaluation time) vs the theoretical trigger level above.
-        executed = float(df["close"].iloc[-1])
-        base.executed_entry_price = round(executed, 2)
+        base.entry_price = round(float(entry), 2)  # trigger level (for display)
+        base.executed_entry_price = round(executed, 2)  # actual fill (drives SL/TP/PnL)
         slip = (executed - entry) if direction == "long" else (entry - executed)
         base.entry_slippage = round(float(slip), 2)  # + = worse fill than trigger
         base.stop_loss = round(float(sl), 2)
