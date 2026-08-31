@@ -213,6 +213,16 @@ python tests/test_strategy_no_lookahead.py   # replay parity, filters, exits
 
 ---
 
+## TradingView Pine Script
+
+`tradingview/BTC_Futures_Candlestick.pine` is a **Pine Script v6** port of this
+strategy as a signal indicator. Add it to a **1m / 3m / 5m** BTC futures chart on
+TradingView and it plots the same pattern-named LONG/SHORT signals (with score and
+SL/TP), applying the same candlestick patterns, EMA/RSI/ADX/volume/HTF
+confirmations, entry bias and confluence score. Signals fire on **closed bars**
+(breakout confirmation on the bar that first breaks the pattern's extreme — no
+repaint). It emits `alertcondition`s and dynamic `alert()` messages for alerts.
+
 ## Disclaimer
 
 Provided for **educational and informational purposes only**. It does not execute
