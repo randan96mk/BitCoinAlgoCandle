@@ -7,7 +7,7 @@
   "strategy": {
     "engine": "candlestick",
     "auto_trade": true,
-    "timeframe": "1m",
+    "timeframe": "3m",
     "htf_timeframe": "15m",
 
     "min_signal_score": 72,

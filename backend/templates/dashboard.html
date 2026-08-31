@@ -90,12 +90,9 @@
         <div class="bg-surface rounded-lg px-3 py-1.5 border border-border flex items-center justify-between flex-wrap gap-y-2">
             <div class="flex items-center gap-1">
                 <div class="flex bg-card rounded text-[11px] border border-border">
-                    <button data-tf="1m" class="tf-btn px-2.5 py-1 rounded-l hover:bg-gray-700 transition bg-blue-600/80 text-white">1m</button>
-                    <button data-tf="3m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition">3m</button>
-                    <button data-tf="5m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition">5m</button>
-                    <button data-tf="15m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition">15m</button>
-                    <button data-tf="30m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition">30m</button>
-                    <button data-tf="1h" class="tf-btn px-2.5 py-1 rounded-r hover:bg-gray-700 transition">1H</button>
+                    <button data-tf="1m" class="tf-btn px-2.5 py-1 rounded-l hover:bg-gray-700 transition">1m</button>
+                    <button data-tf="3m" class="tf-btn px-2.5 py-1 hover:bg-gray-700 transition bg-blue-600/80 text-white">3m</button>
+                    <button data-tf="5m" class="tf-btn px-2.5 py-1 rounded-r hover:bg-gray-700 transition">5m</button>
                 </div>
                 <div class="w-px h-4 bg-border mx-1"></div>
                 <div class="flex bg-card rounded text-[11px] border border-border">
@@ -268,7 +265,7 @@ function fmtDuration(start, end) {
     return h + 'h ' + (m % 60) + 'm';
 }
 
-let currentTF = '1m', showSMA = true, showVol = true, showRSI = true;
+let currentTF = '3m', showSMA = true, showVol = true, showRSI = true;
 let knownSignalIds = new Set();
 let firstLoad = true;
 
