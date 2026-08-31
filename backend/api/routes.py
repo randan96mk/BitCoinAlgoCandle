@@ -167,8 +167,14 @@ async def get_chart_candles(timeframe: Optional[str] = Query(None), limit: int =
             ef_data.append({"time": t, "value": round(ema_fast.iloc[i], 2)})
         if not _isnan(ema_slow.iloc[i]):
             es_data.append({"time": t, "value": round(ema_slow.iloc[i], 2)})
+        # Emit an RSI point for EVERY candle so the RSI pane has the same number
+        # of bars as the price pane — warm-up bars are whitespace {time} only, so
+        # the two panes stay index-aligned (RSI would otherwise be shifted left by
+        # the RSI warm-up length and end short of the right edge).
         if not _isnan(rsi_vals.iloc[i]):
             rsi_data.append({"time": t, "value": round(rsi_vals.iloc[i], 2)})
+        else:
+            rsi_data.append({"time": t})
 
     candle_times = [c["time"] for c in candles]
     tf_seconds = {"1m": 60, "3m": 180, "5m": 300, "15m": 900,
