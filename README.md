@@ -216,12 +216,23 @@ python tests/test_strategy_no_lookahead.py   # replay parity, filters, exits
 ## TradingView Pine Script
 
 `tradingview/BTC_Futures_Candlestick.pine` is a **Pine Script v6** port of this
-strategy as a signal indicator. Add it to a **1m / 3m / 5m** BTC futures chart on
-TradingView and it plots the same pattern-named LONG/SHORT signals (with score and
-SL/TP), applying the same candlestick patterns, EMA/RSI/ADX/volume/HTF
-confirmations, entry bias and confluence score. Signals fire on **closed bars**
-(breakout confirmation on the bar that first breaks the pattern's extreme — no
-repaint). It emits `alertcondition`s and dynamic `alert()` messages for alerts.
+strategy as a backtestable **`strategy()`** (not just an indicator). Add it to a
+**1m / 3m / 5m** BTC futures chart on TradingView and the **Strategy Tester** marks
+exactly **when the stop was hit and when each target was achieved**, applying the
+same candlestick patterns, EMA/RSI/ADX/volume/HTF confirmations, entry bias and
+confluence score. It also plots the same pattern-named LONG/SHORT markers (with
+score and SL/TP) and emits `alertcondition`s and dynamic `alert()` messages.
+
+Two exit modes (Risk inputs):
+
+- **Trailing-stop-only** (default, mirrors the live app) — TP1/2/3 are drawn but
+  not booked; the trade rides on a break-even + ATR trailing stop.
+- **Fixed targets** — the position is split across TP1/TP2/TP3 (33 % / 50 % of the
+  remainder / the rest), each paired with the structural stop, so partial target
+  fills and the stop both show up in the tester.
+
+Signals fire on **closed bars** (breakout confirmation on the bar that first breaks
+the pattern's extreme — no repaint).
 
 ## Disclaimer
 
